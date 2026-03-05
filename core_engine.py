@@ -19,7 +19,6 @@ class AuditLogger:
         try:
             with open(self.log_file, mode='x', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                # السطر أدناه هو الذي تم إصلاحه بإضافة العناوين
                 writer.writerow()
         except FileExistsError: pass
     def log_event(self, adapter, action, status, details, score=0.0):
@@ -29,9 +28,12 @@ class AuditLogger:
             writer.writerow([timestamp, adapter, action, status, details, score])
         print(f"[{timestamp}][{adapter}] {status.upper()}: {details}")
 
+# إنشاء نسخة المسجل (هذا السطر هو الذي أصلح الخطأ في صورتك)
+audit_logger = AuditLogger()
+
 class BaseAdapter:
     def __init__(self, name):
-        self.name, self.logger = name, AuditLogger()
+        self.name, self.logger = name, audit_logger
     def _evaluate(self, p):
         score = 0.0
         if p.title: score += 40.0
