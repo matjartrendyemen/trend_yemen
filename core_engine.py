@@ -33,7 +33,7 @@ audit_logger = AuditLogger()
 class BaseAdapter:
     def __init__(self, name):
         self.name, self.logger = name, audit_logger
-    def _evaluate_quality(self, p):
+    def _evaluate_quality(self, p): # الاسم الموحد الصحيح
         score = 0.0
         if p.title: score += 40.0
         if p.price > 0: score += 30.0
