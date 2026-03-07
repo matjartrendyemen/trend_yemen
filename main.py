@@ -15,7 +15,7 @@ load_dotenv()
 class AutonomousController:
     def __init__(self):
         audit_logger.log_event("SYSTEM_CONTROLLER", "Initialization", "info", "Booting up PRODUCTION Agentic Loop...")
-        self.vision = SmartVisionAdapter()
+        self.vision = SmartVisionAdapter(name="VisionUnit")
         self.cj_api = CJAdapter()
 
         # 🟢 تم تفعيل الربط الحقيقي مع جوجل شيتس ودرايف
