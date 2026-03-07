@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 # استيراد الوحدات
 from core_engine import audit_logger, StandardProduct
-from vision_adapter import VisionAdapter
+from vision_adapter import SmartVisionAdapter
 from cj_adapter import CJAdapter
 from google_repository import GoogleSheetsProductRepository
 from drive_manager import GoogleDriveManager
@@ -15,7 +15,7 @@ load_dotenv()
 class AutonomousController:
     def __init__(self):
         audit_logger.log_event("SYSTEM_CONTROLLER", "Initialization", "info", "Booting up PRODUCTION Agentic Loop...")
-        self.vision = VisionAdapter()
+        self.vision = SmartVisionAdapter()
         self.cj_api = CJAdapter()
 
         # 🟢 تم تفعيل الربط الحقيقي مع جوجل شيتس ودرايف
