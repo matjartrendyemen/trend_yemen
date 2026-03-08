@@ -1,6 +1,6 @@
+google-genai
 Pillow
 requests
-google-generativeai
 python-dotenv
 gspread
 google-auth
