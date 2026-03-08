@@ -26,7 +26,7 @@ class GoogleSheetsProductRepository:
         return pending_tasks
 
     def update_product_status(self, row_id: int, status: str, drive_link: str = ""):
-        # تحديث حالة المعالجة في العمود C
+        # تحديث حالة المعالجة في العمود C (ProcessingStatus)
         self.products_sheet.update_acell(f'C{row_id}', status)
         # إذا فيه رابط درايف، نكتبه في العمود G (Final)
         if drive_link:
