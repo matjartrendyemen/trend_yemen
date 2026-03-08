@@ -1,3 +1,8 @@
 Pillow
 requests
 google-generativeai
+python-dotenv
+gspread
+google-auth
+gspread-dataframe
+pandas
