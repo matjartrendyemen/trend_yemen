@@ -9,3 +9,4 @@ google-auth-oauthlib
 google-auth-httplib2
 Pillow==10.4.0
 flask
+google-genai>=0.1.0
