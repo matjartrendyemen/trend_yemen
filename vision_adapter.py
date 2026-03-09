@@ -2,7 +2,7 @@ import os
 import requests
 from io import BytesIO
 from PIL import Image
-import google.genai as genai
+from google import genai
 from core_engine import audit_logger, StandardProduct
 
 class SmartVisionAdapter:
@@ -11,9 +11,10 @@ class SmartVisionAdapter:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             audit_logger.log_event(self.adapter_name, "Init", "error", "GEMINI_API_KEY is missing!")
-        genai.configure(api_key=api_key)
-        # ✅ النموذج المدعوم مع المكتبة الجديدة
-        self.model = genai.GenerativeModel('gemini-1.5-pro')
+        # ✅ إنشاء عميل جديد بدل configure
+        self.client = genai.Client(api_key=api_key)
+        # النموذج المدعوم
+        self.model = "gemini-1.5-pro"
 
     def extract_keywords(self, image_url: str) -> str:
         audit_logger.log_event(self.adapter_name, "Analyze", "info", f"Downloading image: {image_url}")
@@ -31,10 +32,15 @@ class SmartVisionAdapter:
             Only return the keywords, e.g.: men black running shoes
             """
 
-            result = self.model.generate_content([
-                prompt,
-                {"mime_type": mime_type, "data": img_bytes}
-            ])
+            result = self.client.models.generate_content(
+                model=self.model,
+                contents=[
+                    {"role": "user", "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": mime_type, "data": img_bytes}}
+                    ]}
+                ]
+            )
 
             keywords = result.text.strip().replace('\n', ' ')
             audit_logger.log_event(self.adapter_name, "Analyze", "success", f"Keywords generated: {keywords}")
