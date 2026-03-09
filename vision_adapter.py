@@ -11,10 +11,9 @@ class SmartVisionAdapter:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             audit_logger.log_event(self.adapter_name, "Init", "error", "GEMINI_API_KEY is missing!")
-        # ✅ إنشاء عميل جديد بدل configure
+        # ✅ إنشاء عميل جديد
         self.client = genai.Client(api_key=api_key)
-        # النموذج المدعوم
-        self.model = "gemini-1.5-pro"
+        self.model = "models/gemini-1.5-pro"  # لاحظ صيغة الاسم الصحيحة
 
     def extract_keywords(self, image_url: str) -> str:
         audit_logger.log_event(self.adapter_name, "Analyze", "info", f"Downloading image: {image_url}")
@@ -26,11 +25,7 @@ class SmartVisionAdapter:
             img = Image.open(BytesIO(response.content))
             mime_type = Image.MIME.get(img.format, "image/jpeg")
 
-            prompt = """
-            Analyze this product image and return 3-4 precise English keywords
-            suitable for searching on CJdropshipping or AliExpress.
-            Only return the keywords, e.g.: men black running shoes
-            """
+            prompt = "Analyze this product image and return 3-4 precise English keywords suitable for searching."
 
             result = self.client.models.generate_content(
                 model=self.model,
