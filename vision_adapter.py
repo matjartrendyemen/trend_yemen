@@ -21,10 +21,7 @@ class SmartVisionAdapter:
             response = requests.get(image_url, timeout=15)
             response.raise_for_status()
 
-            # ✅ الحصول على البايتات مباشرة
             img_bytes = BytesIO(response.content).getvalue()
-
-            # ✅ تحديد نوع الصورة تلقائيًا باستخدام PIL
             img = Image.open(BytesIO(response.content))
             mime_type = Image.MIME.get(img.format, "image/jpeg")
 
@@ -34,7 +31,6 @@ class SmartVisionAdapter:
             Only return the keywords, e.g.: men black running shoes
             """
 
-            # ✅ تمرير الصورة كـ dict بدل Part
             result = self.model.generate_content([
                 prompt,
                 {"mime_type": mime_type, "data": img_bytes}
