@@ -12,7 +12,7 @@ class SmartVisionAdapter:
         if not api_key:
             audit_logger.log_event(self.adapter_name, "Init", "error", "GEMINI_API_KEY is missing!")
         genai.configure(api_key=api_key)
-        # ✅ استخدم نموذج مدعوم مع الصور
+        # ✅ النموذج المدعوم لتحليل الصور
         self.model = genai.GenerativeModel('gemini-pro-vision')
 
     def extract_keywords(self, image_url: str) -> str:
