@@ -75,4 +75,5 @@ def home():
 if __name__ == "__main__":
     import threading
     threading.Thread(target=bot.start_infinite_loop, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    # تعديل البورت ليقرأ من البيئة أو يستخدم 8080 افتراضيًا
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
