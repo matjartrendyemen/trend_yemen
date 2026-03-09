@@ -2,7 +2,7 @@ import os
 import requests
 from io import BytesIO
 from PIL import Image
-import google.generativeai as genai
+import google.genai as genai
 from core_engine import audit_logger, StandardProduct
 
 class SmartVisionAdapter:
@@ -12,7 +12,7 @@ class SmartVisionAdapter:
         if not api_key:
             audit_logger.log_event(self.adapter_name, "Init", "error", "GEMINI_API_KEY is missing!")
         genai.configure(api_key=api_key)
-        # ✅ النموذج المدعوم لتحليل الصور بعد التحديث
+        # ✅ النموذج المدعوم مع المكتبة الجديدة
         self.model = genai.GenerativeModel('gemini-1.5-pro')
 
     def extract_keywords(self, image_url: str) -> str:
