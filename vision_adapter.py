@@ -3,6 +3,7 @@ import requests
 from io import BytesIO
 from PIL import Image
 import google.generativeai as genai
+from google.generativeai.types import Part
 from core_engine import audit_logger, StandardProduct
 
 class SmartVisionAdapter:
@@ -12,14 +13,21 @@ class SmartVisionAdapter:
         if not api_key:
             audit_logger.log_event(self.adapter_name, "Init", "error", "GEMINI_API_KEY is missing!")
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        # ✅ استخدم نموذج مدعوم ومستقر
+        self.model = genai.GenerativeModel('gemini-1.5-pro')
 
     def extract_keywords(self, image_url: str) -> str:
         audit_logger.log_event(self.adapter_name, "Analyze", "info", f"Downloading image: {image_url}")
         try:
             response = requests.get(image_url, timeout=15)
             response.raise_for_status()
+
+            # ✅ الحصول على البايتات مباشرة
+            img_bytes = BytesIO(response.content).getvalue()
+
+            # ✅ تحديد نوع الصورة تلقائيًا باستخدام PIL
             img = Image.open(BytesIO(response.content))
+            mime_type = Image.MIME.get(img.format, "image/jpeg")
 
             prompt = """
             Analyze this product image and return 3-4 precise English keywords
@@ -27,7 +35,12 @@ class SmartVisionAdapter:
             Only return the keywords, e.g.: men black running shoes
             """
 
-            result = self.model.generate_content([prompt, img])
+            # ✅ تمرير الصورة كـ Part مع mime_type الصحيح
+            result = self.model.generate_content([
+                prompt,
+                Part.from_bytes(img_bytes, mime_type=mime_type)
+            ])
+
             keywords = result.text.strip().replace('\n', ' ')
             audit_logger.log_event(self.adapter_name, "Analyze", "success", f"Keywords generated: {keywords}")
             return keywords
