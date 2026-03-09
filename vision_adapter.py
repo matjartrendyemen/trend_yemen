@@ -3,7 +3,6 @@ import requests
 from io import BytesIO
 from PIL import Image
 import google.generativeai as genai
-from google.generativeai.types import Part
 from core_engine import audit_logger, StandardProduct
 
 class SmartVisionAdapter:
@@ -13,7 +12,7 @@ class SmartVisionAdapter:
         if not api_key:
             audit_logger.log_event(self.adapter_name, "Init", "error", "GEMINI_API_KEY is missing!")
         genai.configure(api_key=api_key)
-        # ✅ استخدم نموذج مدعوم ومستقر
+        # ✅ استخدم نموذج مدعوم
         self.model = genai.GenerativeModel('gemini-1.5-pro')
 
     def extract_keywords(self, image_url: str) -> str:
@@ -35,10 +34,10 @@ class SmartVisionAdapter:
             Only return the keywords, e.g.: men black running shoes
             """
 
-            # ✅ تمرير الصورة كـ Part مع mime_type الصحيح
+            # ✅ تمرير الصورة كـ dict بدل Part
             result = self.model.generate_content([
                 prompt,
-                Part.from_bytes(img_bytes, mime_type=mime_type)
+                {"mime_type": mime_type, "data": img_bytes}
             ])
 
             keywords = result.text.strip().replace('\n', ' ')
