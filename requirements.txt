@@ -56,3 +56,8 @@ tenacity>=8.2.3
 
 google-genai>=0.1.0
 tenacity>=8.2.3
+google-genai
+tenacity
+gspread
+google-api-python-client
+pillow
