@@ -9,8 +9,8 @@ class AIService:
         if self.api_key:
             # إنشاء Client باستخدام المفتاح
             self.client = genai.Client(api_key=self.api_key)
-            # تهيئة الموديل الصحيح مع تمرير الـ Client
-            self.model = genai.GenerativeModel(model="models/gemini-2.5-flash", client=self.client)
+            # حفظ اسم الموديل فقط
+            self.model = "models/gemini-2.5-flash"
             self.ai_available = True
         else:
             system_log.warning("GEMINIAPIKEY missing. Booting in NON-AI Fallback Mode.")
@@ -23,7 +23,12 @@ class AIService:
 
         try:
             system_log.info("AI online. Analyzing image...")
-            keywords = extract_keywords_from_image(self.model, image_url)
+            # استدعاء الموديل عبر client.models.generate_content
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=image_url
+            )
+            keywords = extract_keywords_from_image(response, image_url)
             return keywords
         except Exception as e:
             error_msg = str(e).lower()
