@@ -7,8 +7,10 @@ class AIService:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-2.0-flash')
+            # إنشاء Client باستخدام المفتاح
+            self.client = genai.Client(api_key=self.api_key)
+            # تهيئة الموديل الصحيح
+            self.model = self.client.GenerativeModel(model="models/gemini-2.5-flash")
             self.ai_available = True
         else:
             system_log.warning("GEMINIAPIKEY missing. Booting in NON-AI Fallback Mode.")
