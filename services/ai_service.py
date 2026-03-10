@@ -1,29 +1,31 @@
 import os
-import google.genai as genai
+from adapters.vision_adapter import SmartVisionAdapter
 from monitoring.logger import system_log
-from adapters.vision_adapter import extract_keywords_from_image
 
 class AIService:
     def __init__(self):
+        # نتحقق من وجود المفتاح أولاً
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            self.client = genai.Client(api_key=self.api_key)
-            # نحفظ اسم الموديل فقط
-            self.model = "models/gemini-2.5-flash"
+            # نستخدم الكلاس الجديد الذي أثبت نجاحه في التقرير
+            self.vision_module = SmartVisionAdapter()
             self.ai_available = True
+            system_log.info("✅ AI Service: SmartVisionAdapter initialized successfully.")
         else:
-            system_log.warning("GEMINI_API_KEY missing. Booting in NON-AI Fallback Mode.")
+            system_log.warning("⚠️ GEMINI_API_KEY missing. Booting in Fallback Mode.")
             self.ai_available = False
 
     def get_search_keywords(self, image_url: str, fallback_text: str = "Trending products") -> str:
         if not self.ai_available:
-            system_log.info(f"AI offline. Using fallback text: {fallback_text}")
             return fallback_text
 
         try:
-            system_log.info("AI online. Passing model to Vision Adapter...")
-            # نمرر self.model وليس كائن الاستجابة
-            return extract_keywords_from_image(self.model, image_url)
+            # نستدعي الدالة من داخل الكلاس الجديد
+            return self.vision_module.extract_keywords(image_url)
         except Exception as e:
-            system_log.error(f"AI Vision Failed: {e}. Using fallback text.")
+            system_log.error(f"❌ AI Service Failed: {e}. Using fallback.")
             return fallback_text
+
+    def analyze_product_image(self, image_url):
+        """دالة إضافية للتوافق مع استدعاءات الأوركستريتور"""
+        return self.get_search_keywords(image_url)
