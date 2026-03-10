@@ -16,34 +16,35 @@ class CJAdapter:
         if self.access_token and current_time < self.token_expiry:
             return True
 
-        system_log.info("🔐 Security: Requesting fresh CJ Token...")
+        system_log.info(f"🔐 Attempting Auth for: {self.email}")
         auth_url = f"{self.base_url}/authentication/getAccessToken"
         payload = {"email": self.email, "password": self.password}
         
         try:
-            if not self.email or not self.password:
-                raise ValueError("CJ_EMAIL or CJ_PASSWORD missing in environment!")
-
             response = requests.post(auth_url, json=payload, timeout=15)
+            
+            # إذا استمر الحظر، سنقوم بطباعة رسالة واضحة
             if response.status_code == 429:
-                system_log.critical("⚠️ Rate Limit! Cooling down for 5 mins...")
-                time.sleep(300)
+                system_log.critical("⚠️ CJ still blocking us. Wait 5 mins...")
                 return False
 
             data = response.json()
             if data.get('result') == True:
                 self.access_token = data['data']['accessToken']
-                self.token_expiry = current_time + 36000 # صالح لـ 10 ساعات
+                self.token_expiry = current_time + 36000
                 system_log.info("✅ CJ Authentication Success.")
                 return True
-            return False
+            else:
+                # هنا سيخبرنا السجل بالسبب الحقيقي (مثلاً: Password Error)
+                system_log.error(f"❌ CJ Rejected Auth: {data.get('message')}")
+                return False
         except Exception as e:
-            system_log.error(f"CJ Auth Error: {e}")
+            system_log.error(f"📡 CJ Connection Error: {e}")
             return False
 
     def fetch_product(self, keyword: str) -> dict:
         if not self._authenticate():
-            raise ValueError("CJ Auth Failed.")
+            raise ValueError("CJ Auth Failed. Please check Email/Password in Railway.")
         
         search_url = f"{self.base_url}/product/list"
         headers = {"CJ-Access-Token": self.access_token}
