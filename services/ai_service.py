@@ -28,7 +28,10 @@ class AIService:
                 model=self.model,
                 contents=image_url
             )
-            keywords = extract_keywords_from_image(response, image_url)
+            # استخراج النص الناتج من الاستجابة
+            keywords = response.text
+            # تمرير النص إلى الـ adapter إذا أردت معالجة إضافية
+            keywords = extract_keywords_from_image(keywords, image_url)
             return keywords
         except Exception as e:
             error_msg = str(e).lower()
