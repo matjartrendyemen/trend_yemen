@@ -6,8 +6,7 @@ from monitoring.logger import system_log
 class CJAdapter:
     def __init__(self):
         self.base_url = "https://developers.cjdropshipping.com/api2.0/v1"
-        self.email = os.getenv("CJ_EMAIL")
-        self.password = os.getenv("CJ_PASSWORD")
+        self.api_key = os.getenv("CJ_API_KEY") 
         self.access_token = None
         self.token_expiry = 0
 
@@ -16,27 +15,25 @@ class CJAdapter:
         if self.access_token and current_time < self.token_expiry:
             return True
 
-        system_log.info(f"🔐 Attempting Auth for: {self.email}")
+        if not self.api_key:
+            system_log.error("❌ CJ_API_KEY is missing!")
+            return False
+
+        system_log.info("🔐 Security: Using API Key for authentication...")
         auth_url = f"{self.base_url}/authentication/getAccessToken"
-        payload = {"email": self.email, "password": self.password}
+        payload = {"apiKey": self.api_key} 
         
         try:
             response = requests.post(auth_url, json=payload, timeout=15)
-            
-            # إذا استمر الحظر، سنقوم بطباعة رسالة واضحة
-            if response.status_code == 429:
-                system_log.critical("⚠️ CJ still blocking us. Wait 5 mins...")
-                return False
-
             data = response.json()
+            
             if data.get('result') == True:
                 self.access_token = data['data']['accessToken']
                 self.token_expiry = current_time + 36000
-                system_log.info("✅ CJ Authentication Success.")
+                system_log.info("✅ CJ Authentication Success via API Key.")
                 return True
             else:
-                # هنا سيخبرنا السجل بالسبب الحقيقي (مثلاً: Password Error)
-                system_log.error(f"❌ CJ Rejected Auth: {data.get('message')}")
+                system_log.error(f"❌ CJ Rejected Key: {data.get('message')}")
                 return False
         except Exception as e:
             system_log.error(f"📡 CJ Connection Error: {e}")
@@ -44,7 +41,7 @@ class CJAdapter:
 
     def fetch_product(self, keyword: str) -> dict:
         if not self._authenticate():
-            raise ValueError("CJ Auth Failed. Please check Email/Password in Railway.")
+            raise ValueError("CJ Auth Failed. Verify API Key.")
         
         search_url = f"{self.base_url}/product/list"
         headers = {"CJ-Access-Token": self.access_token}
@@ -61,4 +58,4 @@ class CJAdapter:
                 "price": item.get('sellPrice'),
                 "image": item.get('productImage')
             }
-        raise ValueError(f"No match for: {keyword}")
+        raise ValueError(f"No match found for: {keyword}")
