@@ -1,5 +1,5 @@
 import os
-import google.generativeai as genai
+import google.genai as genai
 from monitoring.logger import system_log
 from adapters.vision_adapter import extract_keywords_from_image
 
@@ -8,7 +8,7 @@ class AIService:
         self.api_key = os.getenv("GEMINIAPIKEY")
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('models/gemini-2.5-flash')
+            self.model = genai.GenerativeModel('gemini-2.0-flash')
             self.ai_available = True
         else:
             system_log.warning("GEMINIAPIKEY missing. Booting in NON-AI Fallback Mode.")
