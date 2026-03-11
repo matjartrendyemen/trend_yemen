@@ -12,28 +12,20 @@ class SmartVisionAdapter:
         self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     def extract_keywords(self, image_url: str) -> str:
-        prompt = """
-        Analyze this product image for an e-commerce store. 
-        Provide 5 unique and specific search keywords separated by commas.
-        Focus on the product type, color, and key features.
-        Example: 'wireless headphones, black matte, noise canceling, tech, audio'
-        """
+        prompt = "Analyze this product image for an e-commerce store. Provide 5 unique and specific search keywords separated by commas."
         try:
-            # محاولة التحميل ككائن (Object) لضمان أعلى دقة
             try:
+                # محاولة تحميل الصورة كملف لضمان أعلى دقة
                 response_img = requests.get(image_url, timeout=10)
                 img = Image.open(BytesIO(response_img.content))
-                response = self.model.generate_content([prompt, img])
+                content = [prompt, img]
             except:
-                # إذا كان الرابط محمي (مثل جوجل درايف)، نرسل الرابط مباشرة كما كان سابقاً
+                # احتياطي لروابط درايف المحمية
                 system_log.warning("⚠️ Using URL directly for protected link...")
-                response = self.model.generate_content([prompt, image_url])
+                content = [prompt, image_url]
             
-            if response and response.text:
-                keywords = response.text.strip().replace("\n", " ")
-                system_log.info(f"✨ AI Analysis Success: {keywords}")
-                return keywords
-            return "gadget, trendy, store"
+            response = self.model.generate_content(content)
+            return response.text.strip().replace("\n", " ") if response else "gadget, trendy, store"
         except Exception as e:
             system_log.error(f"❌ Vision Analysis Error: {e}")
             return "gadget, trendy, store"
