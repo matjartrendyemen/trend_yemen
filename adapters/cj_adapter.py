@@ -1,10 +1,11 @@
-import os
 import requests
+import os
 import time
 from monitoring.logger import system_log
 
 class CJAdapter:
     def __init__(self):
+        # الاعتماد على الرابط المستقر V1 الذي نجح في تجاربك السابقة
         self.base_url = "https://developers.cjdropshipping.com/api2.0/v1"
         self.api_key = os.getenv("CJ_API_KEY")
         self.access_token = None
@@ -19,7 +20,7 @@ class CJAdapter:
             system_log.error("❌ CJ_API_KEY is missing in Railway variables!")
             return False
 
-        system_log.info("🔐 Security: Authenticating with API Key...")
+        system_log.info("🔐 Security: Authenticating with CJ V1 API...")
         auth_url = f"{self.base_url}/authentication/getAccessToken"
         try:
             response = requests.post(auth_url, json={"apiKey": self.api_key}, timeout=15)
@@ -48,13 +49,15 @@ class CJAdapter:
             res = requests.get(search_url, headers=headers, params=params, timeout=20).json()
             if res.get('result') and res['data']['list']:
                 item = res['data']['list'][0]
+                system_log.info(f"📦 Product Found: {item.get('productNameEn')}")
                 return {
                     "sku": item.get('productSku'),
                     "title": item.get('productNameEn'),
                     "price": item.get('sellPrice'),
-                    "image": item.get('productImage')
+                    "image": item.get('productImage'),
+                    "video": item.get('productVideo', '') # إضافة رابط الفيديو المطلوب هندسياً
                 }
-            raise ValueError(f"No match for: {keyword}")
+            raise ValueError(f"No match found for keyword: {keyword}")
         except Exception as e:
             system_log.error(f"❌ CJ Fetch Error: {e}")
             raise
