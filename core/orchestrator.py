@@ -1,37 +1,84 @@
 import time
-from services.sheet_service import SheetService
+import os
+from flask import Flask
+from threading import Thread
 from services.ai_service import AIService
-from monitoring.logger import system_log
+from storage.sheets_store import SheetsStore
 
+# --- إعداد Flask لإبقاء Railway مستيقظاً ---
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "Trend Store Bot is Active 🚀", 200
+
+def run_flask():
+    # Railway يستخدم المتغير البيئي PORT تلقائياً
+    port = int(os.getenv("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
+
+# --- كلاس المحرك الأساسي مع خاصية التوقيت ---
 class MasterOrchestrator:
     def __init__(self):
-        self.sheets = SheetService()
         self.ai = AIService()
+        self.store = SheetsStore()
+        self.wait_time = 120  # الفحص كل دقيقتين
+        self.timeout = 45     # مهلة معالجة الصف الواحدة
 
-    def start_monitoring(self):
-        system_log.info("🚀 Master Orchestrator running in FREE TIER mode...")
+    def run_forever(self):
+        print("🚀 Master Orchestrator starting with Flask & Timeout protection...")
         while True:
             try:
-                task = self.sheets.get_next_task()
-                if task:
-                    row_id = task['row']
-                    img_url = task['image_url']
-                    
-                    self.sheets.update_status(row_id, "Processing")
-                    
-                    # تحليل الصورة
-                    keywords = self.ai.analyze_product_image(img_url)
-                    
-                    # تحديث الشيت بالنتيجة في العمود D
-                    self.sheets.sheet.update_cell(row_id, 4, keywords)
-                    self.sheets.update_status(row_id, "Completed")
-                    
-                    # انتظر دقيقة كاملة بعد كل صورة لمنح الـ API فرصة للتنفس
-                    system_log.info("⏳ Cooling down for 60s after processing...")
-                    time.sleep(60)
+                # 1. جلب الصفوف المطلوب معالجتها
+                pending_rows = self.store.get_pending_rows()
                 
-                # فحص الشيت كل دقيقتين بدلاً من 10 ثوانٍ
-                time.sleep(120) 
+                if not pending_rows:
+                    print("😴 No tasks found. Sleeping...")
+                else:
+                    for row in pending_rows:
+                        print(f"🎯 Task found at row {row['index']}")
+                        
+                        # تغيير الحالة فوراً لمنع التكرار
+                        self.store.update_status(row['index'], "Processing")
+                        
+                        # معالجة الصف مع مراعاة الوقت
+                        success = self.process_with_timeout(row)
+                        
+                        if success:
+                            print(f"✅ Row {row['index']} Completed.")
+                        else:
+                            print(f"⚠️ Row {row['index']} failed or timed out.")
+                            self.store.update_status(row['index'], "Failed/Timeout")
+
+                        # "وقت تنفس" قصير بين الصفوف لتجنب Quota Hit
+                        time.sleep(20)
+
             except Exception as e:
-                system_log.error(f"❌ Loop Error: {e}")
-                time.sleep(180) # انتظر 3 دقائق إذا حدث خطأ
+                print(f"❌ Error in Main Loop: {e}")
+            
+            time.sleep(self.wait_time)
+
+    def process_with_timeout(self, row):
+        """دالة معالجة الصف مع حماية من التعليق"""
+        try:
+            # تحليل الصورة عبر جيمني
+            keywords = self.ai.analyze_product_image(row['image_url'])
+            
+            if keywords:
+                # تحديث الشيت بالنتائج
+                self.store.update_result(row['index'], keywords)
+                self.store.update_status(row['index'], "Completed")
+                return True
+        except Exception as e:
+            print(f"Error processing row {row['index']}: {e}")
+        return False
+
+if __name__ == "__main__":
+    # تشغيل Flask في خيط (Thread) منفصل
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+
+    # تشغيل المحرك الأساسي
+    orchestrator = MasterOrchestrator()
+    orchestrator.run_forever()
