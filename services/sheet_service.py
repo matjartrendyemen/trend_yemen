@@ -8,26 +8,30 @@ class SheetService:
         self.scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         self.creds = Credentials.from_service_account_file('config/service_account.json', scopes=self.scope)
         self.client = gspread.authorize(self.creds)
-        
-        # استخدام المتغير الصحيح واسم التبويب Products
         self.spreadsheet_id = os.getenv("SPREADSHEET_ID")
+        # الدخول لتبويب Products مباشرة
         self.sheet = self.client.open_by_key(self.spreadsheet_id).worksheet("Products")
 
     def get_next_task(self):
-        """يبحث عن المهام المعلقة في عمود ProcessingStatus"""
-        all_records = self.sheet.get_all_records()
-        system_log.info(f"📋 Sheet Check: Found {len(all_records)} products.")
+        """قراءة جميع القيم والبحث عن Pending في العمود C"""
+        all_values = self.sheet.get_all_values()
+        system_log.info(f"📋 Total rows found: {len(all_values)}")
         
-        for index, row in enumerate(all_records, start=2):
-            # التأكد من مطابقة اسم العمود ProcessingStatus تماماً
-            status = str(row.get('ProcessingStatus', '')).strip().lower()
-            if status == 'pending':
-                system_log.info(f"🎯 Found Pending task at row {index}")
-                return {"row": index, "data": row}
-        
+        # نبدأ من السطر الثاني لتخطي العناوين
+        for index, row in enumerate(all_values[1:], start=2):
+            if len(row) >= 3:
+                status = str(row[2]).strip().lower() # العمود C هو index 2
+                if status == 'pending':
+                    system_log.info(f"🎯 Task Found at row {index}!")
+                    return {
+                        "row": index,
+                        "image_url": row[1], # العمود B هو الرابط
+                        "data": row
+                    }
+        system_log.info("😴 No 'pending' tasks in column C.")
         return None
 
     def update_status(self, row_index, status_text):
-        # تحديث العمود C (رقم 3) الذي يمثل ProcessingStatus في صورتك
+        # تحديث العمود C (رقم 3)
         self.sheet.update_cell(row_index, 3, status_text)
-        system_log.info(f"✅ Row {row_index} status updated to: {status_text}")
+        system_log.info(f"📝 Row {row_index} set to {status_text}")
