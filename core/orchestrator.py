@@ -9,7 +9,7 @@ class MasterOrchestrator:
         self.ai = AIService()
 
     def start_monitoring(self):
-        system_log.info("🚀 Master Orchestrator is running...")
+        system_log.info("🚀 Master Orchestrator running in FREE TIER mode...")
         while True:
             try:
                 task = self.sheets.get_next_task()
@@ -22,11 +22,16 @@ class MasterOrchestrator:
                     # تحليل الصورة
                     keywords = self.ai.analyze_product_image(img_url)
                     
-                    # تحديث الشيت بالنتيجة (سنضع الكلمات في العمود D مثلاً)
+                    # تحديث الشيت بالنتيجة في العمود D
                     self.sheets.sheet.update_cell(row_id, 4, keywords)
                     self.sheets.update_status(row_id, "Completed")
+                    
+                    # انتظر دقيقة كاملة بعد كل صورة لمنح الـ API فرصة للتنفس
+                    system_log.info("⏳ Cooling down for 60s after processing...")
+                    time.sleep(60)
                 
-                time.sleep(10) # فحص كل 10 ثوانٍ
+                # فحص الشيت كل دقيقتين بدلاً من 10 ثوانٍ
+                time.sleep(120) 
             except Exception as e:
                 system_log.error(f"❌ Loop Error: {e}")
-                time.sleep(30)
+                time.sleep(180) # انتظر 3 دقائق إذا حدث خطأ
