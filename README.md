@@ -1,7 +1,88 @@
-# Trend Yemen: Autonomous E-Commerce Engine
-## Handover Documentation (Phase 2 Complete)
-- **Core Engine**: Stable (100% Quality Score Algorithm)
-- **Vision Layer**: Active (Gemini 1.5 Flash Integration)
-- **Logistics Layer**: Connected (CJ Dropshipping API V2)
-- **Secrets**: Encrypted in GitHub & Railway
-- **Status**: Ready for Full Autonomous Access.
+# 🏗️ نظام أتمتة متجر ترند اليمن (Trend Store Yemen Engine) - النسخة النهائية
+
+## 1. 🔐 إدارة الأسرار والمتغيرات (The .env Vault)
+يتم سحب كافة الصلاحيات من ملف `.env` المحمي والموجود في الجذر (Root).
+
+| المتغير (Variable) | القيمة والهدف |
+| :--- | :--- |
+| **GEMINI_API_KEY** | تفعيل نموذج `gemini-2.0-flash` لتحليل الصور. |
+| **GOOGLE_CREDENTIALS** | نص JSON كامل يحتوي على تصريح دخول Google Sheets & Drive. |
+| **CJ_API_KEY** | المفتاح البرمجي لربط منتجات CJ Dropshipping. |
+| **CJ_EMAIL** | بريد حسابك في متجر CJ. |
+| **CJ_PASSWORD** | كلمة مرور حسابك في متجر CJ. |
+| **SPREADSHEET_ID** | المعرف الخاص بجوجل شيت (متجر ترند اليمن). |
+| **DRIVE_FOLDER_ID** | المعرف الخاص بالمجلد لرفع الصور. |
+
+---
+
+## 2. 📁 هيكلية الملفات والكلاسات (The Architecture)
+
+### 🧠 المحرك المركزي (core/orchestrator.py)
+* **الكلاس:** `MasterOrchestrator`
+* **المهمة:** يدير الدورة الزمنية (كل 120 ثانية) ويربط بين تحليل Gemini وبحث CJ وتحديث الشيت.
+
+### 👁️ الخدمات الذكية (services/ai_service.py)
+* **الكلاس:** `AIService`
+* **المهمة:** تمرير الرابط من العمود **B** لموديل Gemini واستخراج الكلمات المفتاحية الإنجليزية بدقة.
+
+### 📑 جسر البيانات (storage/sheets_store.py)
+* **الكلاس:** `SheetsStore`
+* **المهمة:** قراءة حالة `Pending` من العمود **C** وتحديثها إلى `Completed` بعد وضع النتائج في العمود **D**.
+
+### 📦 موصل المورد (adapters/cj_adapter.py)
+* **الكلاس:** `CJAdapter`
+* **المهمة:** استخدام البريد وكلمة المرور من `.env` لجلب التوكن والبحث عن المنتج في CJ.
+
+---
+
+## 🗺️ خريطة البيانات والأعمدة (Data Mapping)
+**الورقة المستهدفة:** `Products`
+1. **العمود B:** مصدر البيانات (رابط الصورة).
+2. **العمود C:** مفتاح التحكم (Pending / Processing / Completed).
+3. **العمود D:** مستلم الكلمات المفتاحية والـ SKU.
+4. **العمود F:** يربط المنتج بالقسم المناسب من ورقة `Categories`.
+
+---
+
+## 🛡️ بروتوكولات الحماية (Safety Protocols)
+1. **بروتوكول 120 ثانية:** انتظار إجباري بين دورات الفحص لحماية الحصة المجانية.
+2. **بروتوكول الـ 70 ثانية:** توقف فوري عند استلام خطأ (429) من جوجل أو جيمني.
+3. **التجاوز الذكي:** أي فشل في صف واحد لا يوقف السيرفر، بل يتم وسمه بـ `Failed`.
+
+---
+
+## 🚀 البيئة البرمجية والمكتبات (Dependencies)
+**الإصدار المعتمد:** `Python 3.12.3`
+
+### الأساسيات والبيئة
+- `python-dotenv==1.0.1`
+- `requests==2.31.0`
+- `urllib3==2.5.0`
+- `certifi==2025.11.12`
+
+### جوجل وشيتات البيانات
+- `gspread==6.0.0`
+- `google-auth==2.49.0.dev0`
+- `google-api-python-client==2.120.0`
+- `google-auth-oauthlib==1.3.0`
+
+### الذكاء الاصطناعي
+- `google-genai==1.66.0`
+- `google-generativeai==0.4.1`
+- `pillow==10.3.0`
+
+### خادم الويب (Railway & Flask)
+- `Flask==3.1.3`
+- `Werkzeug==3.1.6`
+- `Jinja2==3.1.6`
+- `MarkupSafe==3.0.3`
+- `itsdangerous==2.2.0`
+
+### معالجة البيانات والتحقق
+- `pydantic==2.12.5`
+- `pydantic_core==2.41.5`
+- `annotated-types==0.7.0`
+- `typing_extensions==4.15.0`
+
+---
+💡 **ملاحظة للـ AI:** "اقرأ ملف .env أولاً، ثم اتبع هيكلية الكلاسات أعلاه لتنفيذ مهام متجر ترند اليمن بنجاح."
