@@ -1,28 +1,36 @@
 from google import genai
 import os
+import requests
+from PIL import Image
+from io import BytesIO
 from monitoring.logger import system_log
 
 class VisionService:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            # استخدام العميل الحديث المعتمد في تقاريرنا
+            # الانتقال للمكتبة المستقرة المعتمدة في تقريرنا
             self.client = genai.Client(api_key=self.api_key)
             self.model_id = "gemini-1.5-flash"
 
-    def analyze_product_image(self, image_data, prompt):
-        """تحليل صورة المنتج واستخراج التفاصيل للجمهور اليمني"""
+    def extract_keywords(self, image_url: str) -> str:
+        prompt = "Analyze this product image for an e-commerce store. Provide 5 unique and specific search keywords separated by commas."
         try:
-            # الاستدعاء الصحيح بدون بادئة models/ لتجنب خطأ 404
+            # محاولة جلب الصورة ومعالجتها
+            try:
+                response_img = requests.get(image_url, timeout=10)
+                img = Image.open(BytesIO(response_img.content))
+                content = [prompt, img]
+            except:
+                system_log.warning("⚠️ Using URL directly for protected link...")
+                content = [prompt, image_url]
+            
+            # الاستدعاء الحديث (بدون بادئة models/)
             response = self.client.models.generate_content(
                 model=self.model_id,
-                contents=[prompt, image_data]
+                contents=content
             )
-            
-            system_log.info("✅ Vision Analysis completed successfully.")
-            return response.text.strip()
-            
+            return response.text.strip().replace("\n", " ")
         except Exception as e:
-            # نظام الرؤية الهجينة: نص بديل في حال الفشل لضمان استمرار المتجر
-            system_log.error(f"❌ Vision Engine Error: {e}")
+            system_log.error(f"❌ Vision Analysis Error (Fixed): {e}")
             return "gadget, trendy, store"
