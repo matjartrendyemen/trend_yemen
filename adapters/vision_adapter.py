@@ -9,16 +9,12 @@ class SmartVisionAdapter:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            # الحل الجديد: تحديد الإصدار v1beta بشكل صريح في الإعدادات
-            self.client = genai.Client(
-                api_key=self.api_key,
-                http_options={'api_version': 'v1beta'}
-            )
-            # نستخدم الاسم المجرد تماماً
+            # الحل القاطع: v1beta والاسم المجرد تماماً
+            self.client = genai.Client(api_key=self.api_key, http_options={'api_version': 'v1beta'})
             self.model_id = "gemini-1.5-flash"
 
-    def extract_keywords(self, image_url: str) -> str:
-        prompt = "Analyze this product image and provide 5 search keywords."
+    def extract_keywords(self, image_url):
+        prompt = "Analyze this product image for 5 unique search keywords."
         try:
             try:
                 response_img = requests.get(image_url, timeout=10)
@@ -27,12 +23,8 @@ class SmartVisionAdapter:
             except:
                 content = [prompt, image_url]
             
-            # الطلب المباشر
-            response = self.client.models.generate_content(
-                model=self.model_id,
-                contents=content
-            )
-            return response.text.strip()
+            response = self.client.models.generate_content(model=self.model_id, contents=content)
+            return response.text.strip().replace("\n", " ")
         except Exception as e:
-            system_log.error(f"❌ Vision Final Error: {e}")
+            system_log.error(f"❌ Vision Final Diagnosis: {e}")
             return "gadget, trendy, store"
