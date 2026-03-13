@@ -17,7 +17,7 @@ class SmartVisionAdapter:
 
     def extract_keywords(self, image_url: str) -> str:
         try:
-            # معالجة الرابط ليكون تحميل مباشر (حل مشكلة الفشل في التعرف على الصورة)
+            # معالجة الرابط لضمان التحميل المباشر
             url = image_url.replace("view?usp=sharing", "uc?export=download")
             headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers, timeout=15)
@@ -27,18 +27,17 @@ class SmartVisionAdapter:
             img = Image.open(BytesIO(img_data))
             mime_type = Image.MIME.get(img.format, "image/jpeg")
 
-            # إرسال البيانات كـ Inline لضمان النجاح
             result = self.client.models.generate_content(
                 model=self.model_id,
                 contents=[{
                     "role": "user",
                     "parts": [
-                        {"text": "Analyze this product and give 4 precise English keywords separated by commas."},
+                        {"text": "Analyze this product and give 4 precise English keywords."},
                         {"inline_data": {"mime_type": mime_type, "data": img_data}}
                     ]
                 }]
             )
-            return result.text.strip().replace("\n", " ") if result.text else "gadget, trendy, store"
+            return result.text.strip().replace("\n", " ") if result.text else "gadget, trendy"
         except Exception as e:
             system_log.error(f"❌ Vision Final Error: {str(e)}")
-            return "gadget, trendy, store"
+            return f"Error: {str(e)}"
