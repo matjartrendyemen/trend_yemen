@@ -9,7 +9,7 @@ class SmartVisionAdapter:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            # استخدام v1beta المتوافق مع إصدار 1.66.0 المثبت عندك
+            # العميل المتوافق مع الخطة المجانية وv1beta
             self.client = genai.Client(
                 api_key=self.api_key, 
                 http_options={'api_version': 'v1beta'}
@@ -18,34 +18,25 @@ class SmartVisionAdapter:
 
     def extract_keywords(self, image_url: str) -> str:
         try:
-            # تنظيف الرابط لضمان أنه مباشر (خصوصاً روابط جوجل درايف)
-            direct_url = image_url.replace("view?usp=sharing", "uc?export=download")
-            if "drive.google.com" in direct_url and "uc?" not in direct_url:
-                 # إذا كان رابط d/ تحويله لـ uc لضمان القبول
-                 import re
-                 match = re.search(r'/d/([^/]+)', direct_url)
-                 if match:
-                     direct_url = f"https://drive.google.com/uc?export=download&id={match.group(1)}"
-
-            system_log.info(f"📸 Fetching direct image: {direct_url}")
+            # معالجة روابط الدرايف لتكون مباشرة
+            url = image_url.replace("view?usp=sharing", "uc?export=download")
+            headers = {"User-Agent": "Mozilla/5.0"}
             
-            # محاولة جلب الصورة
-            response = requests.get(direct_url, timeout=15)
+            response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
+            
             img_data = response.content
-
-            # التحقق من أن البيانات صورة فعلاً بواسطة Pillow
             img = Image.open(BytesIO(img_data))
             mime_type = Image.MIME.get(img.format, "image/jpeg")
 
-            # إرسال البيانات كـ Inline Data (هذا يحل الـ 404 والتعرف على الملف)
+            # الهيكل الذي نجح في تقرير rp.txt
             result = self.client.models.generate_content(
                 model=self.model_id,
                 contents=[
                     {
                         "role": "user",
                         "parts": [
-                            {"text": "Analyze this product and give 4 short English keywords separated by commas."},
+                            {"text": "Give me 4 English keywords for this product separated by commas."},
                             {"inline_data": {"mime_type": mime_type, "data": img_data}}
                         ]
                     }
@@ -53,12 +44,9 @@ class SmartVisionAdapter:
             )
 
             if result and result.text:
-                keywords = result.text.strip().replace("\n", " ")
-                system_log.info(f"✅ Success: {keywords}")
-                return keywords
-            
+                return result.text.strip().replace("\n", " ")
             return "gadget, trendy, store"
 
         except Exception as e:
-            system_log.error(f"❌ Vision Final Error: {str(e)}")
+            system_log.error(f"❌ Vision Error: {str(e)}")
             return "gadget, trendy, store"
