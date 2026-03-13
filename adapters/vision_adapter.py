@@ -9,7 +9,7 @@ class SmartVisionAdapter:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            # العميل المتوافق مع الخطة المجانية وv1beta
+            # استخدام v1beta لضمان التوافق مع الخطة المجانية
             self.client = genai.Client(
                 api_key=self.api_key, 
                 http_options={'api_version': 'v1beta'}
@@ -18,7 +18,7 @@ class SmartVisionAdapter:
 
     def extract_keywords(self, image_url: str) -> str:
         try:
-            # معالجة روابط الدرايف لتكون مباشرة
+            # معالجة روابط جوجل درايف لضمان التحميل المباشر
             url = image_url.replace("view?usp=sharing", "uc?export=download")
             headers = {"User-Agent": "Mozilla/5.0"}
             
@@ -26,17 +26,18 @@ class SmartVisionAdapter:
             response.raise_for_status()
             
             img_data = response.content
+            # التحقق من الملف بواسطة Pillow قبل الإرسال
             img = Image.open(BytesIO(img_data))
             mime_type = Image.MIME.get(img.format, "image/jpeg")
 
-            # الهيكل الذي نجح في تقرير rp.txt
+            # هيكل الطلب الناجح كما في تقاريرك
             result = self.client.models.generate_content(
                 model=self.model_id,
                 contents=[
                     {
                         "role": "user",
                         "parts": [
-                            {"text": "Give me 4 English keywords for this product separated by commas."},
+                            {"text": "Analyze this product image and return 4 precise English keywords separated by commas."},
                             {"inline_data": {"mime_type": mime_type, "data": img_data}}
                         ]
                     }
@@ -48,5 +49,5 @@ class SmartVisionAdapter:
             return "gadget, trendy, store"
 
         except Exception as e:
-            system_log.error(f"❌ Vision Error: {str(e)}")
+            system_log.error(f"❌ Vision Final Error: {str(e)}")
             return "gadget, trendy, store"
