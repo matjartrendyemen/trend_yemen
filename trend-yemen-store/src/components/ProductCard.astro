@@ -1,0 +1,40 @@
+---
+const { product } = Astro.props;
+---
+
+<div class="product-card">
+  <img src={product.imageUrl} alt={product.title} loading="lazy" />
+  <h3>{product.title}</h3>
+  <p>{product.price_yer} ر.ي</p>
+  <button onclick={\`addToCart('\${product.sku}','\${product.title}',\${product.price_yer})\`}>
+  إضافة للسلة
+  </button>
+</div>
+
+<style>
+.product-card{
+background:#fff;
+border-radius:12px;
+padding:15px;
+box-shadow:0 10px 25px rgba(0,0,0,.05);
+transition:.3s;
+text-align:center;
+}
+.product-card:hover{
+transform:translateY(-5px);
+}
+.product-card img{
+width:100%;
+height:200px;
+object-fit:cover;
+border-radius:10px;
+}
+button{
+background:#111;
+color:#fff;
+border:none;
+padding:10px 15px;
+border-radius:8px;
+cursor:pointer;
+}
+</style>
