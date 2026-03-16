@@ -1,52 +1,49 @@
 ---
 const WHATSAPP_NUMBER = "967777549269";
 ---
-<div id="cart-bubble" class="cart-bubble">
-  <span class="cart-count" id="cart-count">0</span>🛒
+<div id="cart-bubble" class="bubble">
+  <span class="count" id="cart-count">0</span>🛒
 </div>
 
-<div id="cart-modal" class="cart-modal hidden">
-  <div class="cart-header"><h3>سلة المشتريات</h3><button id="close-cart">×</button></div>
-  <div id="cart-items" class="cart-items"></div>
-  <div class="cart-footer">
+<div id="cart-modal" class="modal hidden">
+  <div class="header"><h3>سلة المشتريات</h3><button id="close-cart">×</button></div>
+  <div id="cart-items" class="items"></div>
+  <div class="footer">
     <div class="total">الإجمالي: <span id="cart-total">0</span> ر.ي</div>
-    <button id="checkout-btn" class="checkout-btn">الطلب عبر واتساب 💬</button>
+    <button id="checkout-btn" class="checkout">الطلب عبر واتساب 💬</button>
   </div>
 </div>
 
 <script define:vars={{ WHATSAPP_NUMBER }}>
+  // حماية المحتوى والنسخ
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('dragstart', e => e.preventDefault());
+
   let cart = JSON.parse(localStorage.getItem('ty_cart')) ||;
   
-  const updateCartUI = () => {
-    const countEl = document.getElementById('cart-count');
-    const itemsEl = document.getElementById('cart-items');
-    const totalEl = document.getElementById('cart-total');
-    if (!countEl ||!itemsEl ||!totalEl) return;
-
-    countEl.innerText = cart.length;
+  const updateUI = () => {
+    document.getElementById('cart-count').innerText = cart.length;
     let total = 0;
-    
-    if(cart.length === 0) {
-        itemsEl.innerHTML = '<p style="text-align:center; padding:20px; color:#888;">السلة فارغة</p>';
+    const itemsEl = document.getElementById('cart-items');
+    if (cart.length === 0) {
+      itemsEl.innerHTML = '<p style="text-align:center; padding:20px;">السلة فارغة</p>';
     } else {
-        itemsEl.innerHTML = cart.map((item, index) => {
-            total += item.price;
-            return `<div style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #eee; font-size:0.9rem;">
-                      <span>${item.title}</span>
-                      <span>${item.price} ر.ي</span>
-                    </div>`;
-        }).join('');
+      itemsEl.innerHTML = cart.map((item, idx) => {
+        total += item.price;
+        return `<div style="display:flex; justify-content:space-between; padding:10px; border-bottom:1px solid #eee;">
+                  <span>${item.title}</span><span>${item.price} ر.ي</span>
+                </div>`;
+      }).join('');
     }
-    totalEl.innerText = total;
+    document.getElementById('cart-total').innerText = total;
     localStorage.setItem('ty_cart', JSON.stringify(cart));
   };
 
   window.addToCart = (sku, title, price) => {
     cart.push({ sku, title, price });
-    updateCartUI();
-    const bubble = document.getElementById('cart-bubble');
-    bubble.style.transform = 'scale(1.2)';
-    setTimeout(() => bubble.style.transform = 'scale(1)', 200);
+    updateUI();
+    const b = document.getElementById('cart-bubble');
+    b.style.transform = 'scale(1.2)'; setTimeout(() => b.style.transform = 'scale(1)', 200);
   };
 
   document.getElementById('cart-bubble').onclick = () => document.getElementById('cart-modal').classList.toggle('hidden');
@@ -54,23 +51,20 @@ const WHATSAPP_NUMBER = "967777549269";
   
   document.getElementById('checkout-btn').onclick = () => {
     if (cart.length === 0) return alert('السلة فارغة!');
-    let msg = "طلب جديد من متجر ترند اليمن:\n\n" + cart.map(i => `- ${i.title} | ${i.price} ر.ي`).join('\n');
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+    let msg = "طلب جديد من متجر ترند اليمن:\n" + cart.map(i => `- ${i.title} | ${i.price} ر.ي`).join('\n');
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`);
+    cart =; updateUI();
   };
-
-  updateCartUI();
+  updateUI();
 </script>
 
 <style>
- .cart-bubble { position: fixed; bottom: 30px; left: 30px; width: 60px; height: 60px; background: #d4af37; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; z-index: 1000; box-shadow: 0 10px 20px rgba(212,175,55,0.4); transition: transform 0.3s ease; }
- .cart-count { position: absolute; top: -5px; right: -5px; background: #111; color: #fff; font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
- .cart-modal { position: fixed; bottom: 100px; left: 30px; width: 300px; background: #fff; border-radius: 16px; box-shadow: 0 15px 40px rgba(0,0,0,0.15); z-index: 1000; display: flex; flex-direction: column; overflow: hidden; direction: rtl; font-family: sans-serif; }
- .cart-modal.hidden { display: none; }
- .cart-header { background: #111; color: #fff; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
- .cart-header h3 { margin: 0; font-size: 1rem; }
- .cart-header button { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; }
- .cart-items { max-height: 250px; overflow-y: auto; }
- .cart-footer { padding: 15px; background: #f9f9f9; border-top: 1px solid #eee; }
- .total { font-weight: bold; margin-bottom: 10px; }
- .checkout-btn { width: 100%; padding: 10px; background: #25D366; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+.bubble { position: fixed; bottom: 30px; left: 30px; width: 60px; height: 60px; background: #d4af37; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; z-index: 1000; box-shadow: 0 10px 20px rgba(0,0,0,0.15); transition: 0.3s; }
+.count { position: absolute; top: -5px; right: -5px; background: #111; color: #fff; font-size: 12px; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.modal { position: fixed; bottom: 100px; left: 30px; width: 300px; background: #fff; border-radius: 16px; box-shadow: 0 15px 40px rgba(0,0,0,0.2); z-index: 1000; display: flex; flex-direction: column; overflow: hidden; direction: rtl; }
+.modal.hidden { display: none; }
+.header { background: #111; color: #fff; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
+.items { max-height: 250px; overflow-y: auto; }
+.footer { padding: 15px; background: #f9f9f9; border-top: 1px solid #eee; }
+.checkout { width: 100%; padding: 10px; background: #25D366; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
 </style>
