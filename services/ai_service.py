@@ -1,24 +1,14 @@
-import os
+import random
+import re
 from adapters.vision_adapter import SmartVisionAdapter
-from monitoring.logger import system_log
 
 
 class AIService:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-
-        if self.api_key:
-            self.vision = SmartVisionAdapter()
-            self.ai_available = True
-            system_log.info("✅ AI Service Initialized Successfully.")
-        else:
-            self.ai_available = False
+        self.vision = SmartVisionAdapter()
 
     def process_image(self, image_url: str):
         try:
-            if not self.ai_available:
-                raise ValueError("AI is not available")
-
             raw_text = self.vision.extract_keywords(image_url)
 
             if raw_text is None:
@@ -33,45 +23,94 @@ class AIService:
                 raise ValueError("AI response is empty")
 
             product_name = self._extract_product_name(text)
+            product_name = self._clean_product_name(product_name)
 
-            quality_status = "Accepted"
-            error_message = ""
+            category_id = self._infer_category(product_name)
+            sku = self._generate_sku()
 
-            if not product_name or len(product_name.strip()) < 5:
-                quality_status = "NeedsReview"
-                error_message = "Weak or missing ProductName"
+            quality_status, error_message = self._evaluate_quality(product_name)
 
             return {
                 "ProductName": product_name,
-                "SKU": f"SKU-{abs(hash(image_url)) % 100000}",
-                "CategoryID": "general",
-                "FinalImageURL": image_url,
+                "SKU": sku,
+                "CategoryID": category_id,
+                "FinalImageURL": "",
                 "QualityStatus": quality_status,
                 "ErrorMessage": error_message,
             }
 
         except Exception as e:
-            system_log.error(f"AI processing failed: {e}")
             return {
                 "ProductName": "",
                 "SKU": "",
                 "CategoryID": "",
-                "FinalImageURL": image_url,
+                "FinalImageURL": "",
                 "QualityStatus": "Failed",
-                "ErrorMessage": str(e),
+                "ErrorMessage": str(e)[:100],
             }
+
+    # -------------------------
+    # Helpers
+    # -------------------------
 
     def _extract_product_name(self, text: str) -> str:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
-
         if not lines:
             return ""
 
         for line in lines:
-            normalized = line.lower()
-            if normalized.startswith("productname:"):
-                return line.split(":", 1)[1].strip()
-            if normalized.startswith("product name:"):
+            lower = line.lower()
+            if lower.startswith("productname:") or lower.startswith("product name:"):
                 return line.split(":", 1)[1].strip()
 
-        return lines[0].strip()
+        return lines[0]
+
+    def _clean_product_name(self, name: str) -> str:
+        if not name:
+            return ""
+
+        unwanted_words = ["product", "image", "description"]
+        cleaned = name
+
+        for word in unwanted_words:
+            cleaned = re.sub(word, "", cleaned, flags=re.IGNORECASE)
+
+        cleaned = " ".join(cleaned.split())
+
+        if len(cleaned) > 60:
+            cleaned = cleaned[:60].strip()
+
+        return cleaned
+
+    def _infer_category(self, name: str) -> str:
+        name_lower = name.lower()
+
+        if any(word in name_lower for word in ["shirt", "dress", "jacket", "pants", "shoes"]):
+            return "fashion"
+
+        if any(word in name_lower for word in ["phone", "laptop", "camera", "headphones", "charger"]):
+            return "electronics"
+
+        if any(word in name_lower for word in ["cream", "makeup", "perfume", "skincare", "beauty"]):
+            return "beauty"
+
+        if any(word in name_lower for word in ["sofa", "table", "chair", "lamp", "kitchen"]):
+            return "home"
+
+        return "general"
+
+    def _generate_sku(self) -> str:
+        return f"SKU-{random.randint(10000, 99999)}"
+
+    def _evaluate_quality(self, name: str):
+        if not name:
+            return "NeedsReview", "Missing ProductName"
+
+        if len(name) < 5:
+            return "NeedsReview", "Too short name"
+
+        generic_words = ["item", "thing", "object", "stuff"]
+        if name.lower() in generic_words:
+            return "NeedsReview", "Generic product name"
+
+        return "Accepted", ""
