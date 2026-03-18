@@ -1,75 +1,111 @@
-import os
 import json
+import os
+from typing import Any, Dict, List, Optional
+
 import gspread
 from google.oauth2.service_account import Credentials
-from monitoring.logger import system_log
+
 
 class SheetsStore:
     def __init__(self):
-        system_log.info("🚀 Booting up Unified Sheets Service...")
-        try:
-            self.scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-            creds_json = os.getenv("GOOGLE_CREDENTIALS")
-            
-            if not creds_json:
-                system_log.error("❌ GOOGLE_CREDENTIALS missing!")
-                raise ValueError("Missing GOOGLE_CREDENTIALS in environment")
+        self.sheet_name = "Products"
 
-            info = json.loads(creds_json)
-            # استخدام Credentials الصحيحة لضمان صلاحيات الكتابة
-            self.creds = Credentials.from_service_account_info(info).with_scopes(self.scope)
-            self.client = gspread.authorize(self.creds)
-            
-            self.spreadsheet_id = os.getenv("SPREADSHEET_ID")
-            self.spreadsheet = self.client.open_by_key(self.spreadsheet_id)
-            self.products_sheet = self.spreadsheet.worksheet("Products")
-            system_log.info(f"✅ Connected to Sheet: {self.spreadsheet.title}")
-        except Exception as e:
-            system_log.critical(f"❌ Connection Failed: {e}")
-            raise
+        creds_raw = os.getenv("GOOGLE_CREDENTIALS")
+        spreadsheet_id = os.getenv("SPREADSHEET_ID")
 
-    def get_pending_rows(self):
-        """جلب المهام المتوفرة - متوافق مع الأوركستريتور"""
-        try:
-            all_values = self.products_sheet.get_all_values()
-            if len(all_values) <= 1: return []
-            
-            pending_tasks = []
-            # العمود B هو index 1، العمود C هو index 2
-            for index, row in enumerate(all_values[1:], start=2):
-                if len(row) >= 3:
-                    status = str(row[2]).strip().lower()
-                    if status == 'pending':
-                        pending_tasks.append({
-                            "index": index, 
-                            "image_url": row[1]
-                        })
-            
-            if pending_tasks:
-                system_log.info(f"🔍 Found {len(pending_tasks)} pending tasks.")
-            return pending_tasks
-        except Exception as e:
-            system_log.error(f"❌ Error fetching rows: {e}")
-            return []
+        if not creds_raw:
+            raise ValueError("GOOGLE_CREDENTIALS is missing")
 
-    def update_status(self, row_index, status_text):
-        """تحديث العمود C"""
-        try:
-            self.products_sheet.update_cell(row_index, 3, status_text)
-            system_log.info(f"📝 Row {row_index} status -> {status_text}")
-        except Exception as e:
-            system_log.error(f"❌ Failed status update: {e}")
+        if not spreadsheet_id:
+            raise ValueError("SPREADSHEET_ID is missing")
 
-    def update_result(self, row_index, result_text):
-        """تحديث العمود D بالنتائج"""
-        try:
-            self.products_sheet.update_cell(row_index, 4, result_text)
-            system_log.info(f"💾 Row {row_index} results saved to Column D.")
-        except Exception as e:
-            system_log.error(f"❌ Failed result update: {e}")
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
 
-    # توفير التوافق مع الدوال القديمة
-    def mark_processing(self, r_id): self.update_status(r_id, "Processing")
-    def mark_completed(self, r_id, res=""): 
-        self.update_status(r_id, "Completed")
-        if res: self.update_result(r_id, res)
+        credentials_info = json.loads(creds_raw)
+        credentials = Credentials.from_service_account_info(
+            credentials_info,
+            scopes=scopes,
+        )
+
+        client = gspread.authorize(credentials)
+        self.sheet = client.open_by_key(spreadsheet_id).worksheet(self.sheet_name)
+
+        self.headers = self.sheet.row_values(1)
+        self.col_map = {name: idx + 1 for idx, name in enumerate(self.headers)}
+
+    # -------------------------
+    # Helpers
+    # -------------------------
+    def _get_all_records(self) -> List[Dict[str, Any]]:
+        return self.sheet.get_all_records()
+
+    def _get_row_index_by_id(self, row_id: Any) -> Optional[int]:
+        if row_id is None or str(row_id).strip() == "":
+            return None
+
+        rowid_col = self.col_map.get("RowID")
+        if not rowid_col:
+            return None
+
+        values = self.sheet.col_values(rowid_col)
+        for i, value in enumerate(values, start=1):
+            if i == 1:
+                continue  # skip header row
+            if str(value).strip() == str(row_id).strip():
+                return i
+
+        return None
+
+    # -------------------------
+    # Interface (for orchestrator)
+    # -------------------------
+    def get_pending_rows(self) -> List[Dict[str, Any]]:
+        rows = self._get_all_records()
+        result = []
+
+        for row in rows:
+            status = str(row.get("ProcessingStatus", "")).strip().lower()
+            row_id = row.get("RowID")
+            image_url = row.get("ImageURL")
+
+            if status == "pending" and str(row_id).strip() and str(image_url).strip():
+                result.append({
+                    "RowID": row_id,
+                    "ImageURL": image_url,
+                })
+
+        return result
+
+    def update_status(self, row_id: Any, status: str):
+        row_index = self._get_row_index_by_id(row_id)
+        if row_index is None:
+            raise ValueError(f"RowID not found or invalid: {row_id}")
+
+        status_col = self.col_map.get("ProcessingStatus")
+        if not status_col:
+            raise ValueError("ProcessingStatus column not found")
+
+        self.sheet.update_cell(row_index, status_col, status)
+
+    def save_result(self, row_id: Any, result: Any):
+        row_index = self._get_row_index_by_id(row_id)
+        if row_index is None:
+            raise ValueError(f"RowID not found or invalid: {row_id}")
+
+        if not isinstance(result, dict):
+            raise ValueError("save_result expects a dict of column names to values")
+
+        updated_any = False
+        for column_name, value in result.items():
+            col_index = self.col_map.get(column_name)
+            if not col_index:
+                continue
+
+            self.sheet.update_cell(row_index, col_index, "" if value is None else str(value))
+            updated_any = True
+
+        if not updated_any:
+            raise ValueError("No matching sheet columns found in result payload")
