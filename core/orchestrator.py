@@ -63,8 +63,26 @@ class MasterOrchestrator:
             self.sheets.update_status(row_id, final_status)
 
         except Exception as e:
-            print(f"❌ Exception RowID={row_id}: {e}")
-            self.sheets.update_status(row_id, "Failed")
+            error_text = str(e)
+            print(f"❌ Exception RowID={row_id}: {error_text}")
+
+            try:
+                failure_result = {
+                    "ProductName": "",
+                    "SKU": "",
+                    "CategoryID": "",
+                    "FinalImageURL": "",
+                    "QualityStatus": "Failed",
+                    "ErrorMessage": error_text,
+                }
+                self.sheets.save_result(row_id, failure_result)
+            except Exception as save_error:
+                print(f"❌ Failed to save error result RowID={row_id}: {save_error}")
+
+            try:
+                self.sheets.update_status(row_id, "Failed")
+            except Exception as status_error:
+                print(f"❌ Failed to update status RowID={row_id}: {status_error}")
 
         finally:
             time.sleep(self.processing_delay)
