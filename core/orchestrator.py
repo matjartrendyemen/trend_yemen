@@ -17,17 +17,17 @@ class MasterOrchestrator:
 
         while True:
             try:
-                pending_rows = self.sheets.get_pending_rows()
+                rows = self.sheets.get_pending_rows()
 
-                if not pending_rows:
+                if not rows:
                     time.sleep(self.poll_interval)
                     continue
 
-                for row in pending_rows:
+                for row in rows:
                     self.process_row(row)
 
             except Exception as e:
-                print(f"❌ Orchestrator loop error: {e}")
+                print(f"❌ Loop error: {e}")
                 time.sleep(self.poll_interval)
 
     def process_row(self, row):
@@ -35,29 +35,36 @@ class MasterOrchestrator:
         image_url = row.get("ImageURL")
 
         if not row_id or not image_url:
-            print(f"⚠️ Skipping invalid row: {row}")
+            print(f"⚠️ Invalid row skipped: {row}")
             return
 
         try:
-            print(f"🔄 Processing row {row_id}")
+            print(f"🔄 Processing RowID={row_id}")
 
             self.sheets.update_status(row_id, "Processing")
 
             result = self.ai_service.process_image(image_url)
 
+            print(f"🧠 AI Result RowID={row_id}: {result}")
+
             self.sheets.save_result(row_id, result)
 
-            self.sheets.update_status(row_id, "Completed")
+            quality_status = result.get("QualityStatus")
 
-            print(f"✅ Completed row {row_id}")
+            if quality_status == "Failed":
+                final_status = "Failed"
+            elif quality_status in ["Accepted", "NeedsReview"]:
+                final_status = "Completed"
+            else:
+                final_status = "Failed"
+
+            print(f"📊 Final Status RowID={row_id}: {final_status}")
+
+            self.sheets.update_status(row_id, final_status)
 
         except Exception as e:
-            print(f"❌ Failed row {row_id}: {e}")
-
-            try:
-                self.sheets.update_status(row_id, "Failed")
-            except Exception as inner_error:
-                print(f"❌ Failed to update status for row {row_id}: {inner_error}")
+            print(f"❌ Exception RowID={row_id}: {e}")
+            self.sheets.update_status(row_id, "Failed")
 
         finally:
             time.sleep(self.processing_delay)
