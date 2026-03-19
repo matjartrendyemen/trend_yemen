@@ -26,7 +26,7 @@ class AIService:
             product_name = self._clean_product_name(product_name)
 
             category_id = self._infer_category(product_name)
-            sku = self._generate_sku()
+            sku = self._generate_sku(product_name)
 
             quality_status, error_message = self._evaluate_quality(product_name)
 
@@ -48,10 +48,6 @@ class AIService:
                 "QualityStatus": "Failed",
                 "ErrorMessage": str(e)[:100],
             }
-
-    # -------------------------
-    # Helpers
-    # -------------------------
 
     def _extract_product_name(self, text: str) -> str:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -76,6 +72,7 @@ class AIService:
             cleaned = re.sub(word, "", cleaned, flags=re.IGNORECASE)
 
         cleaned = " ".join(cleaned.split())
+        cleaned = cleaned.title()
 
         if len(cleaned) > 60:
             cleaned = cleaned[:60].strip()
@@ -91,16 +88,23 @@ class AIService:
         if any(word in name_lower for word in ["phone", "laptop", "camera", "headphones", "charger"]):
             return "electronics"
 
-        if any(word in name_lower for word in ["cream", "makeup", "perfume", "skincare", "beauty"]):
+        if any(word in name_lower for word in ["cream", "makeup", "perfume", "skincare", "beauty", "soap"]):
             return "beauty"
 
         if any(word in name_lower for word in ["sofa", "table", "chair", "lamp", "kitchen"]):
             return "home"
 
+        if any(word in name_lower for word in ["brace", "support", "medical", "bandage"]):
+            return "health"
+
         return "general"
 
-    def _generate_sku(self) -> str:
-        return f"SKU-{random.randint(10000, 99999)}"
+    def _generate_sku(self, name: str) -> str:
+        base = re.sub(r"[^A-Za-z0-9]", "", name.upper())[:6]
+        if not base:
+            base = "ITEM"
+        rand = random.randint(1000, 9999)
+        return f"{base}-{rand}"
 
     def _evaluate_quality(self, name: str):
         if not name:
