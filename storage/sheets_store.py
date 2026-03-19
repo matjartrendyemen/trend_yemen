@@ -22,6 +22,11 @@ class SheetsStore:
         creds_raw = os.getenv("GOOGLE_CREDENTIALS")
         spreadsheet_id = os.getenv("SPREADSHEET_ID")
 
+        if not creds_raw:
+            raise ValueError("GOOGLE_CREDENTIALS is missing")
+        if not spreadsheet_id:
+            raise ValueError("SPREADSHEET_ID is missing")
+
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
@@ -66,6 +71,9 @@ class SheetsStore:
             return None
 
         col = self.col_map.get("RowID")
+        if not col:
+            return None
+
         values = self.sheet.col_values(col)
 
         for i, v in enumerate(values, start=1):
@@ -74,10 +82,13 @@ class SheetsStore:
             if str(v).strip() == str(row_id).strip():
                 return i
 
-        raise ValueError(f"RowID not found: {row_id}")
+        return None
 
     def _ensure_row_id(self, row_index, row):
         col = self.col_map.get("RowID")
+        if not col:
+            return str(row_index)
+
         existing = str(row.get("RowID", "")).strip()
 
         if existing:
@@ -107,7 +118,13 @@ class SheetsStore:
 
     def update_status(self, row_id, status):
         row_index = self._get_row_index_by_id(row_id)
+        if not row_index:
+            raise ValueError(f"RowID not found: {row_id}")
+
         col = self.col_map.get("ProcessingStatus")
+        if not col:
+            raise ValueError("ProcessingStatus column not found")
+
         self.sheet.update_cell(row_index, col, status)
 
     def save_result(self, row_id, result: Any):
@@ -119,6 +136,8 @@ class SheetsStore:
         self._refresh_headers()
 
         row_index = self._get_row_index_by_id(row_id)
+        if not row_index:
+            raise ValueError(f"RowID not found: {row_id}")
 
         for key in self.REQUIRED_RESULT_COLUMNS:
             col = self.col_map.get(key)
