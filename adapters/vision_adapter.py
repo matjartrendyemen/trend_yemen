@@ -21,7 +21,6 @@ class SmartVisionAdapter:
         self.model_id = "gemini-2.5-flash"
 
     def _get_direct_url(self, url):
-        """تحويل روابط Google Drive إلى روابط تحميل مباشرة"""
         if "drive.google.com" in url:
             match = re.search(r'(?:id=|/d/|/file/d/)([a-zA-Z0-9_-]{25,})', url)
             if match:
