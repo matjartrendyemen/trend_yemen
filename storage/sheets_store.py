@@ -7,6 +7,15 @@ from google.oauth2.service_account import Credentials
 
 
 class SheetsStore:
+    REQUIRED_RESULT_COLUMNS = [
+        "ProductName",
+        "SKU",
+        "CategoryID",
+        "FinalImageURL",
+        "QualityStatus",
+        "ErrorMessage",
+    ]
+
     def __init__(self):
         self.sheet_name = "Products"
 
@@ -27,8 +36,27 @@ class SheetsStore:
         client = gspread.authorize(credentials)
         self.sheet = client.open_by_key(spreadsheet_id).worksheet(self.sheet_name)
 
+        self._refresh_headers()
+        self._ensure_required_columns()
+        self._refresh_headers()
+
+    def _refresh_headers(self):
         self.headers = self.sheet.row_values(1)
         self.col_map = {name: idx + 1 for idx, name in enumerate(self.headers)}
+
+    def _ensure_required_columns(self):
+        missing_columns = [
+            col for col in self.REQUIRED_RESULT_COLUMNS if col not in self.col_map
+        ]
+
+        if not missing_columns:
+            return
+
+        next_col_index = len(self.headers) + 1
+
+        for column_name in missing_columns:
+            self.sheet.update_cell(1, next_col_index, column_name)
+            next_col_index += 1
 
     def _get_all_records(self):
         return self.sheet.get_all_records()
@@ -59,9 +87,6 @@ class SheetsStore:
         self.sheet.update_cell(row_index, col, generated)
         return generated
 
-    # -------------------------
-    # Interface
-    # -------------------------
     def get_pending_rows(self):
         rows = self._get_all_records()
         result = []
@@ -86,12 +111,21 @@ class SheetsStore:
         self.sheet.update_cell(row_index, col, status)
 
     def save_result(self, row_id, result: Any):
+        if not isinstance(result, dict):
+            raise ValueError("save_result expects a dict")
+
+        self._refresh_headers()
+        self._ensure_required_columns()
+        self._refresh_headers()
+
         row_index = self._get_row_index_by_id(row_id)
 
-        for key, value in result.items():
+        for key in self.REQUIRED_RESULT_COLUMNS:
             col = self.col_map.get(key)
             if not col:
                 continue
+
+            value = result.get(key, "")
 
             self.sheet.update_cell(
                 row_index,
