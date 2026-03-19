@@ -3,10 +3,12 @@ import threading
 from flask import Flask, jsonify
 
 from core.orchestrator import MasterOrchestrator
+from storage.sheets_store import SheetsStore
 
 app = Flask(__name__)
 
 orchestrator = MasterOrchestrator()
+sheets = SheetsStore()
 
 _orchestrator_thread = None
 _orchestrator_lock = threading.Lock()
@@ -14,6 +16,7 @@ _orchestrator_started = threading.Event()
 
 
 @app.route("/")
+@app.route("/health")
 def health():
     is_running = (
         _orchestrator_thread is not None
@@ -28,11 +31,65 @@ def health():
     })
 
 
+@app.route("/stats")
+def stats():
+    rows = sheets.sheet.get_all_records()
+
+    counts = {
+        "Pending": 0,
+        "Processing": 0,
+        "Completed": 0,
+        "Failed": 0
+    }
+
+    for row in rows:
+        status = str(row.get("ProcessingStatus", "")).strip()
+        if status in counts:
+            counts[status] += 1
+
+    return jsonify(counts)
+
+
+@app.route("/retry_failed", methods=["POST", "GET"])
+def retry_failed():
+    rows = sheets.sheet.get_all_records()
+    status_col = sheets.col_map.get("ProcessingStatus")
+
+    if not status_col:
+        return jsonify({
+            "status": "error",
+            "message": "ProcessingStatus column not found"
+        }), 400
+
+    updated = 0
+
+    for idx, row in enumerate(rows, start=2):
+        status = str(row.get("ProcessingStatus", "")).strip()
+
+        if status == "Failed":
+            sheets.sheet.update_cell(idx, status_col, "Pending")
+            updated += 1
+
+    return jsonify({
+        "status": "ok",
+        "message": "retry completed",
+        "updated": updated
+    })
+
+
+@app.route("/list_products")
+def list_products():
+    rows = sheets.sheet.get_all_records()
+    last_20 = rows[-20:] if len(rows) >= 20 else rows
+
+    return jsonify({
+        "status": "ok",
+        "count": len(last_20),
+        "products": last_20
+    })
+
+
 def start_orchestrator():
-    """
-    تشغيل الأوركستريتور داخل thread منفصل.
-    يتم تعيين started event فقط عند دخول التنفيذ الفعلي.
-    """
     print("🚀 Starting Master Orchestrator...")
     _orchestrator_started.set()
 
@@ -45,10 +102,6 @@ def start_orchestrator():
 
 
 def start_background_services():
-    """
-    يمنع التشغيل المزدوج للأوركستريتور.
-    إذا كان thread الحالي يعمل بالفعل فلن يتم تشغيله مرة أخرى.
-    """
     global _orchestrator_thread
 
     with _orchestrator_lock:
