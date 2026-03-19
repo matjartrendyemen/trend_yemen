@@ -34,7 +34,7 @@ class AIService:
                 "ProductName": product_name,
                 "SKU": sku,
                 "CategoryID": category_id,
-                "FinalImageURL": "",
+                "FinalImageURL": image_url,
                 "QualityStatus": quality_status,
                 "ErrorMessage": error_message,
             }
@@ -44,7 +44,7 @@ class AIService:
                 "ProductName": "",
                 "SKU": "",
                 "CategoryID": "",
-                "FinalImageURL": "",
+                "FinalImageURL": image_url,
                 "QualityStatus": "Failed",
                 "ErrorMessage": str(e)[:100],
             }
