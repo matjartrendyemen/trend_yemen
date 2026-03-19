@@ -1,0 +1,484 @@
+---
+const API_BASE = "https://trend-yemen-production.up.railway.app";
+---
+
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Trend Yemen Admin Dashboard</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #121a2b;
+        --panel-2: #182236;
+        --text: #e8eefc;
+        --muted: #9fb0d1;
+        --border: #2a3550;
+        --ok: #1f9d55;
+        --warn: #d9a404;
+        --bad: #d64545;
+        --info: #3b82f6;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+      }
+
+      .title h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+      }
+
+      .title p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: bold;
+        border: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      .badge.ok { background: rgba(31,157,85,.15); color: #7ee2a8; border-color: rgba(31,157,85,.4); }
+      .badge.bad { background: rgba(214,69,69,.15); color: #ff9b9b; border-color: rgba(214,69,69,.4); }
+      .badge.warn { background: rgba(217,164,4,.15); color: #ffd86b; border-color: rgba(217,164,4,.4); }
+      .badge.info { background: rgba(59,130,246,.15); color: #8cb7ff; border-color: rgba(59,130,246,.4); }
+
+      button {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        padding: 10px 14px;
+        border-radius: 12px;
+        cursor: pointer;
+      }
+
+      button:hover { background: var(--panel-2); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+      }
+
+      .card h3 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: normal;
+      }
+
+      .card .value {
+        font-size: 30px;
+        font-weight: bold;
+      }
+
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+
+      .search {
+        width: 100%;
+        max-width: 420px;
+      }
+
+      .search input {
+        width: 100%;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        padding: 12px 14px;
+        border-radius: 12px;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--panel);
+      }
+
+      table {
+        width: 100%;
+        min-width: 1350px;
+        border-collapse: collapse;
+      }
+
+      th, td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+        text-align: left;
+      }
+
+      th {
+        background: rgba(255,255,255,.03);
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      .img-thumb {
+        width: 64px;
+        height: 64px;
+        object-fit: cover;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #111827;
+      }
+
+      .row-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .small-btn {
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 12px;
+      }
+
+      .error-box {
+        background: rgba(214,69,69,.12);
+        border: 1px solid rgba(214,69,69,.35);
+        color: #ffb4b4;
+        padding: 12px 14px;
+        border-radius: 14px;
+        margin-bottom: 16px;
+      }
+
+      a.link {
+        color: #8cb7ff;
+        text-decoration: none;
+        word-break: break-all;
+      }
+
+      a.link:hover {
+        text-decoration: underline;
+      }
+
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 24px;
+      }
+
+      .top-space { margin-top: 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="title">
+          <h1>Trend Yemen Admin Dashboard</h1>
+          <p>Operational view for image processing pipeline</p>
+        </div>
+
+        <div class="actions">
+          <span id="healthBadge" class="badge bad">Loading...</span>
+          <button id="refreshBtn">Refresh</button>
+          <button id="retryFailedBtn">Retry Failed</button>
+        </div>
+      </div>
+
+      <div id="errorBox" class="error-box" style="display:none;"></div>
+
+      <div class="stats">
+        <div class="card"><h3>Pending</h3><div id="statPending" class="value">0</div></div>
+        <div class="card"><h3>Processing</h3><div id="statProcessing" class="value">0</div></div>
+        <div class="card"><h3>Completed</h3><div id="statCompleted" class="value">0</div></div>
+        <div class="card"><h3>Failed</h3><div id="statFailed" class="value">0</div></div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <div class="search">
+            <input id="searchInput" type="text" placeholder="Search by row, product, category, status..." />
+          </div>
+          <div id="showingText" class="muted">Showing 0 of 0</div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>RowID</th>
+                <th>ProductName</th>
+                <th>SKU</th>
+                <th>CategoryID</th>
+                <th>Preview</th>
+                <th>ProcessingStatus</th>
+                <th>QualityStatus</th>
+                <th>ErrorMessage</th>
+                <th>FinalImageURL</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="productsBody">
+              <tr>
+                <td colspan="10" class="empty">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = {JSON.stringify(API_BASE)};
+      let products = [];
+      let filteredProducts = [];
+
+      async function fetchJson(path, options = {}) {
+        const res = await fetch(`${API_BASE}${path}`, options);
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Request failed: ${res.status}`);
+        }
+        return res.json();
+      }
+
+      function setError(message = "") {
+        const box = document.getElementById("errorBox");
+        if (!message) {
+          box.style.display = "none";
+          box.textContent = "";
+          return;
+        }
+        box.style.display = "block";
+        box.textContent = message;
+      }
+
+      function badgeHtml(status, type = "status") {
+        const value = String(status || "").trim();
+        let cls = "badge";
+
+        if (type === "quality") {
+          if (value === "Accepted") cls += " ok";
+          else if (value === "NeedsReview") cls += " warn";
+          else if (value === "Failed") cls += " bad";
+        } else {
+          if (value === "Completed") cls += " ok";
+          else if (value === "Processing") cls += " info";
+          else if (value === "Failed") cls += " bad";
+          else if (value === "Pending") cls += " warn";
+        }
+
+        return `<span class="${cls}">${value || "Unknown"}</span>`;
+      }
+
+      function renderRows() {
+        const body = document.getElementById("productsBody");
+        const showingText = document.getElementById("showingText");
+        showingText.textContent = `Showing ${filteredProducts.length} of ${products.length}`;
+
+        if (!filteredProducts.length) {
+          body.innerHTML = `
+            <tr>
+              <td colspan="10" class="empty">No products found</td>
+            </tr>
+          `;
+          return;
+        }
+
+        body.innerHTML = filteredProducts
+          .slice()
+          .reverse()
+          .map((row, index) => {
+            const imgUrl = row.FinalImageURL || row.ImageURL || "";
+            return `
+              <tr>
+                <td>${row.RowID || "—"}</td>
+                <td><strong>${row.ProductName || "—"}</strong></td>
+                <td>${row.SKU || "—"}</td>
+                <td>${row.CategoryID || "—"}</td>
+                <td>
+                  ${
+                    imgUrl
+                      ? `<img src="${imgUrl}" alt="${row.ProductName || "Product"}" class="img-thumb" />`
+                      : `<div class="img-thumb" style="display:flex;align-items:center;justify-content:center;color:#9fb0d1;font-size:12px;">No image</div>`
+                  }
+                </td>
+                <td>${badgeHtml(row.ProcessingStatus, "status")}</td>
+                <td>${badgeHtml(row.QualityStatus, "quality")}</td>
+                <td class="muted">${row.ErrorMessage || "—"}</td>
+                <td>
+                  ${
+                    imgUrl
+                      ? `<a class="link" href="${imgUrl}" target="_blank" rel="noreferrer">Open link</a>`
+                      : "—"
+                  }
+                </td>
+                <td>
+                  <div class="row-actions">
+                    <button class="small-btn" onclick="retryRow('${row.RowID || ""}')">Retry</button>
+                    <button class="small-btn" onclick="deleteRow('${row.RowID || ""}')">Delete</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function applySearch() {
+        const q = document.getElementById("searchInput").value.trim().toLowerCase();
+
+        if (!q) {
+          filteredProducts = [...products];
+          renderRows();
+          return;
+        }
+
+        filteredProducts = products.filter((row) =>
+          [
+            row.RowID,
+            row.ProductName,
+            row.SKU,
+            row.CategoryID,
+            row.ProcessingStatus,
+            row.QualityStatus,
+            row.ErrorMessage,
+            row.ImageURL,
+            row.FinalImageURL
+          ]
+            .map((v) => String(v || "").toLowerCase())
+            .some((v) => v.includes(q))
+        );
+
+        renderRows();
+      }
+
+      async function loadAll() {
+        setError("");
+        try {
+          const [healthData, statsData, productsData] = await Promise.all([
+            fetchJson("/health"),
+            fetchJson("/stats"),
+            fetchJson("/list_products")
+          ]);
+
+          const badge = document.getElementById("healthBadge");
+          if (healthData.orchestrator_running) {
+            badge.className = "badge ok";
+            badge.textContent = "Orchestrator Running";
+          } else {
+            badge.className = "badge bad";
+            badge.textContent = "Orchestrator Stopped";
+          }
+
+          document.getElementById("statPending").textContent = Number(statsData.Pending || 0);
+          document.getElementById("statProcessing").textContent = Number(statsData.Processing || 0);
+          document.getElementById("statCompleted").textContent = Number(statsData.Completed || 0);
+          document.getElementById("statFailed").textContent = Number(statsData.Failed || 0);
+
+          products = Array.isArray(productsData?.products) ? productsData.products : [];
+          filteredProducts = [...products];
+          applySearch();
+        } catch (e) {
+          setError(e.message || "Failed to load dashboard data");
+        }
+      }
+
+      async function retryFailed() {
+        setError("");
+        try {
+          await fetchJson("/retry_failed", { method: "POST" });
+          await loadAll();
+        } catch (e) {
+          setError(e.message || "Failed to retry failed rows");
+        }
+      }
+
+      async function retryRow(rowId) {
+        if (!rowId) return;
+        setError("");
+        try {
+          await fetchJson(`/retry_row?id=${encodeURIComponent(rowId)}`, { method: "POST" });
+          await loadAll();
+        } catch (e) {
+          setError(e.message || "Failed to retry row");
+        }
+      }
+
+      async function deleteRow(rowId) {
+        if (!rowId) return;
+        const confirmed = confirm(`Delete row ${rowId}?`);
+        if (!confirmed) return;
+
+        setError("");
+        try {
+          await fetchJson(`/delete_row?id=${encodeURIComponent(rowId)}`, { method: "POST" });
+          await loadAll();
+        } catch (e) {
+          setError(e.message || "Failed to delete row");
+        }
+      }
+
+      document.getElementById("refreshBtn").addEventListener("click", loadAll);
+      document.getElementById("retryFailedBtn").addEventListener("click", retryFailed);
+      document.getElementById("searchInput").addEventListener("input", applySearch);
+
+      loadAll();
+      setInterval(loadAll, 15000);
+
+      window.retryRow = retryRow;
+      window.deleteRow = deleteRow;
+    </script>
+  </body>
+</html>
