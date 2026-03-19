@@ -1,6 +1,6 @@
 import os
 import threading
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 from core.orchestrator import MasterOrchestrator
 from storage.sheets_store import SheetsStore
@@ -50,7 +50,7 @@ def stats():
     return jsonify(counts)
 
 
-@app.route("/retry_failed", methods=["POST", "GET"])
+@app.route("/retry_failed", methods=["POST"])
 def retry_failed():
     rows = sheets.sheet.get_all_records()
     status_col = sheets.col_map.get("ProcessingStatus")
@@ -65,7 +65,6 @@ def retry_failed():
 
     for idx, row in enumerate(rows, start=2):
         status = str(row.get("ProcessingStatus", "")).strip()
-
         if status == "Failed":
             sheets.sheet.update_cell(idx, status_col, "Pending")
             updated += 1
@@ -74,6 +73,45 @@ def retry_failed():
         "status": "ok",
         "message": "retry completed",
         "updated": updated
+    })
+
+
+@app.route("/retry_row", methods=["POST"])
+def retry_row():
+    row_id = request.args.get("id", "").strip()
+
+    if not row_id:
+        return jsonify({"status": "error", "message": "Missing id"}), 400
+
+    row_index = sheets._get_row_index_by_id(row_id)
+    if not row_index:
+        return jsonify({"status": "error", "message": "Row not found"}), 404
+
+    status_col = sheets.col_map.get("ProcessingStatus")
+    sheets.sheet.update_cell(row_index, status_col, "Pending")
+
+    return jsonify({
+        "status": "ok",
+        "row_id": row_id
+    })
+
+
+@app.route("/delete_row", methods=["POST"])
+def delete_row():
+    row_id = request.args.get("id", "").strip()
+
+    if not row_id:
+        return jsonify({"status": "error", "message": "Missing id"}), 400
+
+    row_index = sheets._get_row_index_by_id(row_id)
+    if not row_index:
+        return jsonify({"status": "error", "message": "Row not found"}), 404
+
+    sheets.sheet.delete_rows(row_index)
+
+    return jsonify({
+        "status": "ok",
+        "row_id": row_id
     })
 
 
