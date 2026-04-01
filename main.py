@@ -4,11 +4,13 @@ from flask import Flask, jsonify, request
 
 from core.orchestrator import MasterOrchestrator
 from storage.sheets_store import SheetsStore
+from services.admin_read_service import AdminReadService
 
 app = Flask(__name__)
 
 orchestrator = MasterOrchestrator()
 sheets = SheetsStore()
+admin_read_service = AdminReadService()
 
 _orchestrator_thread = None
 _orchestrator_lock = threading.Lock()
@@ -126,7 +128,14 @@ def list_products():
         "products": last_20
     })
 
-
+@app.route("/admin/overview", methods=["GET"])
+def admin_overview():
+    try:
+        records = admin_read_service.get_all_admin_records()
+        return jsonify(records)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+        
 def start_orchestrator():
     print("🚀 Starting Master Orchestrator...")
     _orchestrator_started.set()
