@@ -170,6 +170,8 @@ def admin_ui():
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <title>Trend Yemen Admin UI</title>
         <style>
+          * { box-sizing: border-box; }
+
           body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -177,29 +179,30 @@ def admin_ui():
             background: #f7f7f7;
             color: #222;
           }
-          .page {
-            max-width: 1200px;
-            margin: 0 auto;
-          }
+
           h1 {
             margin: 0 0 8px;
-            font-size: 28px;
           }
-          .sub {
+
+          p {
             margin: 0 0 20px;
             color: #666;
           }
-          .topbar {
+
+          #topbar {
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: space-between;
             gap: 12px;
-            margin-bottom: 16px;
             flex-wrap: wrap;
+            margin-bottom: 14px;
           }
+
           #status {
+            margin-bottom: 16px;
             color: #555;
           }
+
           #error {
             display: none;
             margin-bottom: 16px;
@@ -208,63 +211,78 @@ def admin_ui():
             border: 1px solid #ffb3b3;
             color: #a40000;
             border-radius: 8px;
+            white-space: pre-wrap;
+            word-break: break-word;
           }
+
           #grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: 16px;
           }
+
           .card {
             background: #fff;
             border: 1px solid #ddd;
-            border-radius: 12px;
+            border-radius: 10px;
             padding: 14px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-          }
-          .title-row {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 10px;
-            margin-bottom: 10px;
+            flex-direction: column;
+            gap: 8px;
           }
-          .product-name {
+
+          .card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+          }
+
+          .card h3 {
             margin: 0;
             font-size: 18px;
-            line-height: 1.35;
+            line-height: 1.25;
           }
-          .badge {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: bold;
-            border: 1px solid #ccc;
-            white-space: nowrap;
-          }
-          .badge.ready {
-            background: #e8f7ec;
-            color: #0f7a2d;
-            border-color: #b7e0c1;
-          }
-          .badge.needs_review {
-            background: #fff5d6;
-            color: #9a6b00;
-            border-color: #f1d37a;
-          }
-          .badge.invalid {
-            background: #fdeaea;
-            color: #b42318;
-            border-color: #f3b3b3;
-          }
+
           .meta {
             font-size: 14px;
             color: #444;
-            margin-bottom: 6px;
           }
-          .meta strong {
-            color: #222;
+
+          .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid transparent;
+            white-space: nowrap;
           }
+
+          .badge-ready {
+            background: #e6f6ea;
+            color: #18794e;
+            border-color: #b7e3c4;
+          }
+
+          .badge-needs-review {
+            background: #fff4d6;
+            color: #9a6700;
+            border-color: #f1d38a;
+          }
+
+          .badge-invalid {
+            background: #fde8e8;
+            color: #b42318;
+            border-color: #f5b7b1;
+          }
+
+          .badge-unknown {
+            background: #ececec;
+            color: #555;
+            border-color: #ddd;
+          }
+
           .preview {
             width: 100%;
             aspect-ratio: 1 / 1;
@@ -272,8 +290,9 @@ def admin_ui():
             border-radius: 8px;
             border: 1px solid #ddd;
             background: #eee;
-            margin: 12px 0;
+            margin: 4px 0;
           }
+
           .placeholder {
             width: 100%;
             aspect-ratio: 1 / 1;
@@ -284,90 +303,95 @@ def admin_ui():
             border: 1px solid #ddd;
             background: #eee;
             color: #777;
-            margin: 12px 0;
+            margin: 4px 0;
             font-size: 14px;
           }
-          .section-label {
-            font-size: 13px;
+
+          .section-title {
+            font-size: 14px;
             font-weight: bold;
-            color: #333;
-            margin-top: 10px;
-            margin-bottom: 6px;
+            margin-top: 4px;
           }
-          .missing-list {
-            margin: 0;
-            padding-left: 18px;
-            color: #555;
-            font-size: 14px;
-          }
+
           .muted {
             color: #666;
             font-size: 14px;
           }
-          .error-message {
-            margin-top: 6px;
-            padding: 8px 10px;
+
+          .error-box {
+            background: #fff1f0;
+            border: 1px solid #f3c2be;
+            color: #a94442;
             border-radius: 8px;
-            background: #fff4f4;
-            border: 1px solid #f1c0c0;
-            color: #9f1d1d;
+            padding: 10px;
             font-size: 13px;
             word-break: break-word;
           }
+
           .links {
-            margin-top: 10px;
-            display: grid;
+            display: flex;
+            flex-direction: column;
             gap: 6px;
           }
-          .small-link {
-            font-size: 13px;
-            color: #0b57d0;
-            text-decoration: none;
-            word-break: break-all;
-          }
-          .small-link:hover {
-            text-decoration: underline;
-          }
+
           .actions {
             display: flex;
-            gap: 8px;
-            margin-top: 14px;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 6px;
           }
+
           button {
             border: 1px solid #ccc;
-            background: #fafafa;
+            background: #fff;
             color: #222;
-            padding: 8px 12px;
             border-radius: 8px;
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 14px;
           }
+
           button:hover {
-            background: #f0f0f0;
+            background: #f2f2f2;
           }
+
           button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
           }
-          .empty {
-            padding: 30px 0;
-            color: #666;
+
+          a {
+            color: #0b57d0;
+            text-decoration: none;
+            word-break: break-all;
+            font-size: 14px;
+          }
+
+          a:hover {
+            text-decoration: underline;
+          }
+
+          ul {
+            margin: 6px 0 0 18px;
+            padding: 0;
+          }
+
+          li {
+            margin: 2px 0;
           }
         </style>
       </head>
       <body>
-        <div class="page">
-          <h1>Trend Yemen Admin UI</h1>
-          <p class="sub">Simple admin view powered by <code>/admin/overview</code></p>
-
-          <div class="topbar">
-            <div id="status">Loading products...</div>
-            <button id="refreshBtn" type="button">Refresh</button>
+        <div id="topbar">
+          <div>
+            <h1>Trend Yemen Admin UI</h1>
+            <p>Simple admin view powered by <code>/admin/overview</code></p>
           </div>
-
-          <div id="error"></div>
-          <div id="grid"></div>
+          <button onclick="loadProducts()">Refresh</button>
         </div>
+
+        <div id="status">Loading products...</div>
+        <div id="error"></div>
+        <div id="grid"></div>
 
         <script>
           function normalizeImageUrl(url) {
@@ -399,34 +423,16 @@ def admin_ui():
               .replace(/'/g, "&#39;");
           }
 
-          function setError(message = "") {
-            const errorEl = document.getElementById("error");
-            if (!message) {
-              errorEl.style.display = "none";
-              errorEl.textContent = "";
-              return;
-            }
-            errorEl.style.display = "block";
-            errorEl.textContent = message;
-          }
-
           function badgeClass(status) {
-            if (status === "ready") return "badge ready";
-            if (status === "needs_review") return "badge needs_review";
-            return "badge invalid";
+            const value = String(status || "").trim().toLowerCase();
+            if (value === "ready") return "badge badge-ready";
+            if (value === "needs_review") return "badge badge-needs-review";
+            if (value === "invalid") return "badge badge-invalid";
+            return "badge badge-unknown";
           }
 
-          async function fetchOverview() {
-            const response = await fetch("/admin/overview");
-            if (!response.ok) {
-              const text = await response.text();
-              throw new Error(text || ("Request failed: " + response.status));
-            }
-            return response.json();
-          }
-
-          async function postAction(url) {
-            const response = await fetch(url, { method: "POST" });
+          async function apiPost(path) {
+            const response = await fetch(path, { method: "POST" });
             if (!response.ok) {
               const text = await response.text();
               throw new Error(text || ("Request failed: " + response.status));
@@ -437,11 +443,10 @@ def admin_ui():
           async function retryRow(rowId) {
             if (!rowId) return;
             try {
-              setError("");
-              await postAction("/retry_row?id=" + encodeURIComponent(rowId));
+              await apiPost("/retry_row?id=" + encodeURIComponent(rowId));
               await loadProducts();
             } catch (error) {
-              setError(error.message || "Failed to retry row");
+              showError(error.message || "Retry failed");
             }
           }
 
@@ -451,114 +456,120 @@ def admin_ui():
             if (!confirmed) return;
 
             try {
-              setError("");
-              await postAction("/delete_row?id=" + encodeURIComponent(rowId));
+              await apiPost("/delete_row?id=" + encodeURIComponent(rowId));
               await loadProducts();
             } catch (error) {
-              setError(error.message || "Failed to delete row");
+              showError(error.message || "Delete failed");
             }
           }
 
-          function renderProducts(records) {
-            const gridEl = document.getElementById("grid");
-            const statusEl = document.getElementById("status");
-
-            statusEl.textContent = records.length + " products loaded";
-
-            if (!records.length) {
-              gridEl.innerHTML = '<div class="empty">No products found</div>';
+          function showError(message) {
+            const errorEl = document.getElementById("error");
+            if (!message) {
+              errorEl.style.display = "none";
+              errorEl.textContent = "";
               return;
             }
-
-            gridEl.innerHTML = records.map((product) => {
-              const productName = product.product_name || "Untitled Product";
-              const rowId = product.row_id || "";
-              const categoryId = product.category_id || "—";
-              const processingStatus = product.processing_status || "—";
-              const readinessStatus = (product.readiness && product.readiness.status) ? product.readiness.status : "invalid";
-              const finalImageUrl = product.final_image_url || "";
-              const sourceImageUrl = product.source_image_url || "";
-              const previewRaw = finalImageUrl || sourceImageUrl || "";
-              const previewUrl = normalizeImageUrl(previewRaw);
-              const detailUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
-              const missingFields = (product.smart_encoding_inputs && Array.isArray(product.smart_encoding_inputs.missing_fields))
-                ? product.smart_encoding_inputs.missing_fields
-                : [];
-              const errorMessage = product.error_message || "";
-
-              const imageHtml = previewUrl
-                ? `<img class="preview" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(productName)}" onerror="this.outerHTML='<div class=&quot;placeholder&quot;>No image</div>'" />`
-                : `<div class="placeholder">No image</div>`;
-
-              const missingHtml = missingFields.length
-                ? `<ul class="missing-list">${missingFields.map((field) => `<li>${escapeHtml(field)}</li>`).join("")}</ul>`
-                : `<div class="muted">No missing fields</div>`;
-
-              const errorHtml = errorMessage
-                ? `<div class="section-label">Error message</div><div class="error-message">${escapeHtml(errorMessage)}</div>`
-                : "";
-
-              const finalLinkHtml = finalImageUrl
-                ? `<a class="small-link" href="${escapeHtml(finalImageUrl)}" target="_blank" rel="noreferrer">Final image link</a>`
-                : `<span class="muted">Final image link: —</span>`;
-
-              const sourceLinkHtml = sourceImageUrl
-                ? `<a class="small-link" href="${escapeHtml(sourceImageUrl)}" target="_blank" rel="noreferrer">Source image link</a>`
-                : `<span class="muted">Source image link: —</span>`;
-
-              return `
-                <div class="card">
-                  <div class="title-row">
-                    <h3 class="product-name">${escapeHtml(productName)}</h3>
-                    <span class="${badgeClass(readinessStatus)}">${escapeHtml(readinessStatus)}</span>
-                  </div>
-
-                  <div class="meta"><strong>Row ID:</strong> ${escapeHtml(rowId || "—")}</div>
-                  <div class="meta"><strong>Category:</strong> ${escapeHtml(categoryId)}</div>
-                  <div class="meta"><strong>Processing:</strong> ${escapeHtml(processingStatus)}</div>
-
-                  ${imageHtml}
-
-                  <div class="section-label">Missing fields</div>
-                  ${missingHtml}
-
-                  ${errorHtml}
-
-                  <div class="links">
-                    ${finalLinkHtml}
-                    ${sourceLinkHtml}
-                    <a class="small-link" href="${escapeHtml(detailUrl)}" target="_blank">View product JSON</a>
-                  </div>
-
-                  <div class="actions">
-                    <button type="button" onclick="retryRow('${escapeHtml(rowId)}')">Retry</button>
-                    <button type="button" onclick="deleteRow('${escapeHtml(rowId)}')">Delete</button>
-                  </div>
-                </div>
-              `;
-            }).join("");
+            errorEl.style.display = "block";
+            errorEl.textContent = message;
           }
 
           async function loadProducts() {
-            const gridEl = document.getElementById("grid");
             const statusEl = document.getElementById("status");
+            const gridEl = document.getElementById("grid");
 
-            setError("");
+            showError("");
             gridEl.innerHTML = "";
             statusEl.textContent = "Loading products...";
 
             try {
-              const records = await fetchOverview();
-              renderProducts(Array.isArray(records) ? records : []);
+              const response = await fetch("/admin/overview");
+              if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || ("Request failed: " + response.status));
+              }
+
+              const products = await response.json();
+              const records = Array.isArray(products) ? products : [];
+
+              statusEl.textContent = records.length + " products loaded";
+
+              if (!records.length) {
+                gridEl.innerHTML = "<div>No products found</div>";
+                return;
+              }
+
+              gridEl.innerHTML = records.map((product) => {
+                const productName = product.product_name || "Untitled Product";
+                const rowId = product.row_id || "";
+                const categoryId = product.category_id || "—";
+                const processingStatus = product.processing_status || "—";
+                const readinessStatus = (product.readiness && product.readiness.status)
+                  ? product.readiness.status
+                  : "invalid";
+
+                const smart = product.smart_encoding_inputs || {};
+                const missingFields = Array.isArray(smart.missing_fields) ? smart.missing_fields : [];
+
+                const rawFinalUrl = product.final_image_url || "";
+                const rawSourceUrl = product.source_image_url || "";
+
+                const imageUrl = normalizeImageUrl(rawFinalUrl || rawSourceUrl);
+                const detailUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
+
+                const errorMessage = product.error_message || "";
+
+                const imageHtml = imageUrl
+                  ? `<img class="preview" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(productName)}"
+                        onerror="this.outerHTML='<div class=&quot;placeholder&quot;>No image</div>'" />`
+                  : `<div class="placeholder">No image</div>`;
+
+                const missingHtml = missingFields.length
+                  ? `<ul>${missingFields.map(field => `<li>${escapeHtml(field)}</li>`).join("")}</ul>`
+                  : `<div class="muted">No missing fields</div>`;
+
+                const errorHtml = errorMessage
+                  ? `<div class="error-box">${escapeHtml(errorMessage)}</div>`
+                  : `<div class="muted">No error</div>`;
+
+                return `
+                  <div class="card">
+                    <div class="card-head">
+                      <h3>${escapeHtml(productName)}</h3>
+                      <span class="${badgeClass(readinessStatus)}">${escapeHtml(readinessStatus)}</span>
+                    </div>
+
+                    <div class="meta"><strong>Row ID:</strong> ${escapeHtml(rowId || "—")}</div>
+                    <div class="meta"><strong>Category:</strong> ${escapeHtml(categoryId)}</div>
+                    <div class="meta"><strong>Processing:</strong> ${escapeHtml(processingStatus)}</div>
+
+                    ${imageHtml}
+
+                    <div class="section-title">Missing fields</div>
+                    ${missingHtml}
+
+                    <div class="section-title">Error message</div>
+                    ${errorHtml}
+
+                    <div class="links">
+                      <a href="${escapeHtml(rawFinalUrl)}" target="_blank">Final image link</a>
+                      <a href="${escapeHtml(rawSourceUrl)}" target="_blank">Source image link</a>
+                      <a href="${escapeHtml(detailUrl)}" target="_blank">View product JSON</a>
+                    </div>
+
+                    <div class="actions">
+                      <button onclick="retryRow('${escapeHtml(rowId)}')">Retry</button>
+                      <button onclick="deleteRow('${escapeHtml(rowId)}')">Delete</button>
+                    </div>
+                  </div>
+                `;
+              }).join("");
+
             } catch (error) {
               statusEl.textContent = "Failed to load products";
-              setError(error.message || "Unknown error");
+              showError(error.message || "Unknown error");
             }
           }
-
-          document.getElementById("refreshBtn").addEventListener("click", loadProducts);
-          window.retryRow = retryRow;
-          window.deleteRow = deleteRow;
 
           loadProducts();
         </script>
