@@ -136,6 +136,27 @@ def admin_overview():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
         
+@app.route("/admin/product")
+def admin_product():
+    row_id = request.args.get("row_id", "").strip()
+
+    if not row_id:
+        return jsonify({
+            "status": "error",
+            "message": "Missing row_id"
+        }), 400
+
+    records = admin_read_service.get_all_admin_records()
+    record = next((item for item in records if item.get("row_id") == row_id), None)
+
+    if not record:
+        return jsonify({
+            "status": "error",
+            "message": "Admin product not found"
+        }), 404
+
+    return jsonify(record)        
+        
 def start_orchestrator():
     print("🚀 Starting Master Orchestrator...")
     _orchestrator_started.set()
