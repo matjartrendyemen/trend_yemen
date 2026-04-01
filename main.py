@@ -128,6 +128,7 @@ def list_products():
         "products": last_20
     })
 
+
 @app.route("/admin/overview", methods=["GET"])
 def admin_overview():
     try:
@@ -135,7 +136,8 @@ def admin_overview():
         return jsonify(records)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-        
+
+
 @app.route("/admin/product")
 def admin_product():
     row_id = request.args.get("row_id", "").strip()
@@ -155,8 +157,9 @@ def admin_product():
             "message": "Admin product not found"
         }), 404
 
-    return jsonify(record)        
-    
+    return jsonify(record)
+
+
 @app.route("/admin/ui")
 def admin_ui():
     return """
@@ -264,6 +267,26 @@ def admin_ui():
         <div id="grid"></div>
 
         <script>
+          function normalizeImageUrl(url) {
+            if (!url) return "";
+
+            const value = String(url).trim();
+
+            const filePathMatch = value.match(/drive\\.google\\.com\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
+            if (filePathMatch) {
+              const fileId = filePathMatch[1];
+              return `https://drive.google.com/uc?export=view&id=${fileId}`;
+            }
+
+            const queryIdMatch = value.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (queryIdMatch) {
+              const fileId = queryIdMatch[1];
+              return `https://drive.google.com/uc?export=view&id=${fileId}`;
+            }
+
+            return value;
+          }
+
           async function loadProducts() {
             const statusEl = document.getElementById("status");
             const errorEl = document.getElementById("error");
@@ -297,7 +320,10 @@ def admin_ui():
                 const categoryId = product.category_id || "—";
                 const processingStatus = product.processing_status || "—";
                 const readinessStatus = (product.readiness && product.readiness.status) ? product.readiness.status : "invalid";
-                const imageUrl = product.final_image_url || product.source_image_url || "";
+
+                const rawImageUrl = product.final_image_url || product.source_image_url || "";
+                const imageUrl = normalizeImageUrl(rawImageUrl);
+
                 const detailUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
 
                 const imageHtml = imageUrl
