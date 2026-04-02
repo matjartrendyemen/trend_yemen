@@ -1,25 +1,27 @@
 import os
+import tempfile
 import threading
-from io import BytesIO
+import uuid
+from pathlib import Path
 
-from flask import Flask, jsonify, request
-from werkzeug.utils import secure_filename
+from flask import Flask, jsonify, request, send_from_directory
 
 from core.orchestrator import MasterOrchestrator
 from storage.sheets_store import SheetsStore
-from storage.drive_store import DriveStore
 from services.admin_read_service import AdminReadService
 
 app = Flask(__name__)
 
 orchestrator = MasterOrchestrator()
 sheets = SheetsStore()
-drive = DriveStore()
 admin_read_service = AdminReadService()
 
 _orchestrator_thread = None
 _orchestrator_lock = threading.Lock()
 _orchestrator_started = threading.Event()
+
+SEED_IMAGE_DIR = Path(tempfile.gettempdir()) / "trend_yemen_seed_images"
+SEED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @app.route("/")
@@ -165,6 +167,11 @@ def admin_product():
     return jsonify(record)
 
 
+@app.route("/admin/seed_image/<path:filename>")
+def admin_seed_image(filename):
+    return send_from_directory(SEED_IMAGE_DIR, filename)
+
+
 @app.route("/admin/create_product", methods=["POST"])
 def admin_create_product():
     image = request.files.get("image")
@@ -214,17 +221,14 @@ def admin_create_product():
                 "message": "Empty image file"
             }), 400
 
-        filename = secure_filename(image.filename) or "product-image"
-        mime_type = image.mimetype or "application/octet-stream"
+        extension = Path(image.filename).suffix or ".jpg"
+        filename = f"{uuid.uuid4().hex}{extension}"
+        file_path = SEED_IMAGE_DIR / filename
 
-        file_obj = BytesIO(image_bytes)
-        file_obj.seek(0)
+        with open(file_path, "wb") as f:
+            f.write(image_bytes)
 
-        image_url = drive.upload_image_file(
-            file_obj=file_obj,
-            filename=filename,
-            mime_type=mime_type,
-        )
+        image_url = request.host_url.rstrip("/") + f"/admin/seed_image/{filename}"
 
         created = sheets.append_pending_product(
             image_url=image_url,
