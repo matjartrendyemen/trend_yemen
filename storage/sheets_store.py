@@ -132,6 +132,7 @@ class SheetsStore:
 
         required_columns = ["ImageURL", "Price", "ProcessingStatus"]
         missing_columns = [col for col in required_columns if col not in self.col_map]
+
         if missing_columns:
             raise ValueError(
                 f"Required sheet columns missing: {', '.join(missing_columns)}"
