@@ -1,15 +1,20 @@
 import os
 import threading
+from io import BytesIO
+
 from flask import Flask, jsonify, request
+from werkzeug.utils import secure_filename
 
 from core.orchestrator import MasterOrchestrator
 from storage.sheets_store import SheetsStore
+from storage.drive_store import DriveStore
 from services.admin_read_service import AdminReadService
 
 app = Flask(__name__)
 
 orchestrator = MasterOrchestrator()
 sheets = SheetsStore()
+drive = DriveStore()
 admin_read_service = AdminReadService()
 
 _orchestrator_thread = None
@@ -160,6 +165,85 @@ def admin_product():
     return jsonify(record)
 
 
+@app.route("/admin/create_product", methods=["POST"])
+def admin_create_product():
+    image = request.files.get("image")
+    price_raw = request.form.get("price", "").strip()
+
+    if image is None or not image.filename:
+        return jsonify({
+            "status": "error",
+            "message": "Missing image file"
+        }), 400
+
+    if not str(image.mimetype or "").startswith("image/"):
+        return jsonify({
+            "status": "error",
+            "message": "Uploaded file must be an image"
+        }), 400
+
+    if not price_raw:
+        return jsonify({
+            "status": "error",
+            "message": "Missing price"
+        }), 400
+
+    try:
+        normalized_price = price_raw.replace(",", "").strip()
+        price_number = float(normalized_price)
+
+        if price_number <= 0:
+            raise ValueError()
+
+        price_value = (
+            str(int(price_number))
+            if price_number.is_integer()
+            else str(price_number)
+        )
+    except Exception:
+        return jsonify({
+            "status": "error",
+            "message": "Invalid price"
+        }), 400
+
+    try:
+        image_bytes = image.read()
+        if not image_bytes:
+            return jsonify({
+                "status": "error",
+                "message": "Empty image file"
+            }), 400
+
+        filename = secure_filename(image.filename) or "product-image"
+        mime_type = image.mimetype or "application/octet-stream"
+
+        file_obj = BytesIO(image_bytes)
+        file_obj.seek(0)
+
+        image_url = drive.upload_image_file(
+            file_obj=file_obj,
+            filename=filename,
+            mime_type=mime_type,
+        )
+
+        created = sheets.append_pending_product(
+            image_url=image_url,
+            price=price_value,
+        )
+
+        return jsonify({
+            "row_id": created["row_id"],
+            "image_url": created["image_url"],
+            "status": created["status"],
+        }), 201
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
 @app.route("/admin/ui")
 def admin_ui():
     return """
@@ -211,6 +295,29 @@ def admin_ui():
             border: 1px solid #ffb3b3;
             color: #a40000;
             border-radius: 8px;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+
+          #create-box {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 18px;
+          }
+
+          #create-form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+          }
+
+          #create-result {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #444;
             white-space: pre-wrap;
             word-break: break-word;
           }
@@ -341,6 +448,8 @@ def admin_ui():
             margin-top: 6px;
           }
 
+          input[type="file"],
+          input[type="number"],
           button {
             border: 1px solid #ccc;
             background: #fff;
@@ -387,6 +496,16 @@ def admin_ui():
             <p>Simple admin view powered by <code>/admin/overview</code></p>
           </div>
           <button onclick="loadProducts()">Refresh</button>
+        </div>
+
+        <div id="create-box">
+          <div class="section-title">Create product</div>
+          <form id="create-form">
+            <input id="image-input" type="file" accept="image/*" required />
+            <input id="price-input" type="number" step="any" min="0" placeholder="Price (YER)" required />
+            <button type="submit">Create Product</button>
+          </form>
+          <div id="create-result"></div>
         </div>
 
         <div id="status">Loading products...</div>
@@ -460,6 +579,58 @@ def admin_ui():
               await loadProducts();
             } catch (error) {
               showError(error.message || "Delete failed");
+            }
+          }
+
+          async function createProduct(event) {
+            event.preventDefault();
+
+            const imageInput = document.getElementById("image-input");
+            const priceInput = document.getElementById("price-input");
+            const resultEl = document.getElementById("create-result");
+
+            const file = imageInput.files[0];
+            const price = (priceInput.value || "").trim();
+
+            if (!file) {
+              resultEl.textContent = "Please choose an image file";
+              return;
+            }
+
+            if (!price) {
+              resultEl.textContent = "Please enter price";
+              return;
+            }
+
+            const formData = new FormData();
+            formData.append("image", file);
+            formData.append("price", price);
+
+            resultEl.textContent = "Creating product...";
+
+            try {
+              const response = await fetch("/admin/create_product", {
+                method: "POST",
+                body: formData
+              });
+
+              const data = await response.json();
+
+              if (!response.ok) {
+                throw new Error(data.message || "Create product failed");
+              }
+
+              resultEl.textContent =
+                "Created successfully\\n" +
+                "row_id: " + (data.row_id || "") + "\\n" +
+                "status: " + (data.status || "") + "\\n" +
+                "image_url: " + (data.image_url || "");
+
+              imageInput.value = "";
+              priceInput.value = "";
+              await loadProducts();
+            } catch (error) {
+              resultEl.textContent = error.message || "Create product failed";
             }
           }
 
@@ -571,6 +742,7 @@ def admin_ui():
             }
           }
 
+          document.getElementById("create-form").addEventListener("submit", createProduct);
           loadProducts();
         </script>
       </body>
