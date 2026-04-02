@@ -127,6 +127,33 @@ class SheetsStore:
 
         self.sheet.update_cell(row_index, col, status)
 
+    def append_pending_product(self, image_url: str, price: Any):
+        self._refresh_headers()
+
+        required_columns = ["ImageURL", "Price", "ProcessingStatus"]
+        missing_columns = [col for col in required_columns if col not in self.col_map]
+        if missing_columns:
+            raise ValueError(
+                f"Required sheet columns missing: {', '.join(missing_columns)}"
+            )
+
+        row_values = ["" for _ in self.headers]
+
+        row_values[self.col_map["ImageURL"] - 1] = "" if image_url is None else str(image_url)
+        row_values[self.col_map["Price"] - 1] = "" if price is None else str(price)
+        row_values[self.col_map["ProcessingStatus"] - 1] = "Pending"
+
+        self.sheet.append_row(row_values, value_input_option="USER_ENTERED")
+
+        row_index = len(self.sheet.get_all_values())
+        row_id = self._ensure_row_id(row_index, {})
+
+        return {
+            "row_id": row_id,
+            "image_url": str(image_url),
+            "status": "Pending",
+        }
+
     def save_result(self, row_id, result: Any):
         if not isinstance(result, dict):
             raise ValueError("save_result expects a dict")
