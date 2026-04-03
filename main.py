@@ -252,504 +252,143 @@ def admin_create_product():
 def admin_ui():
     return """
     <!doctype html>
-    <html lang="en" dir="ltr">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <title>Trend Yemen Admin UI</title>
-        <style>
-          * { box-sizing: border-box; }
-
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: #f7f7f7;
-            color: #222;
-          }
-
-          h1 {
-            margin: 0 0 8px;
-          }
-
-          p {
-            margin: 0 0 20px;
-            color: #666;
-          }
-
-          #topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 14px;
-          }
-
-          #status {
-            margin-bottom: 16px;
-            color: #555;
-          }
-
-          #error {
-            display: none;
-            margin-bottom: 16px;
-            padding: 10px 12px;
-            background: #ffe5e5;
-            border: 1px solid #ffb3b3;
-            color: #a40000;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            word-break: break-word;
-          }
-
-          #create-box {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 14px;
-            margin-bottom: 18px;
-          }
-
-          #create-form {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-          }
-
-          #create-result {
-            margin-top: 10px;
-            font-size: 14px;
-            color: #444;
-            white-space: pre-wrap;
-            word-break: break-word;
-          }
-
-          #grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 16px;
-          }
-
-          .card {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-          }
-
-          .card-head {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 10px;
-          }
-
-          .card h3 {
-            margin: 0;
-            font-size: 18px;
-            line-height: 1.25;
-          }
-
-          .meta {
-            font-size: 14px;
-            color: #444;
-          }
-
-          .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: bold;
-            border: 1px solid transparent;
-            white-space: nowrap;
-          }
-
-          .badge-ready {
-            background: #e6f6ea;
-            color: #18794e;
-            border-color: #b7e3c4;
-          }
-
-          .badge-needs-review {
-            background: #fff4d6;
-            color: #9a6700;
-            border-color: #f1d38a;
-          }
-
-          .badge-invalid {
-            background: #fde8e8;
-            color: #b42318;
-            border-color: #f5b7b1;
-          }
-
-          .badge-unknown {
-            background: #ececec;
-            color: #555;
-            border-color: #ddd;
-          }
-
-          .preview {
-            width: 100%;
-            aspect-ratio: 1 / 1;
-            object-fit: cover;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            background: #eee;
-            margin: 4px 0;
-          }
-
-          .placeholder {
-            width: 100%;
-            aspect-ratio: 1 / 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            background: #eee;
-            color: #777;
-            margin: 4px 0;
-            font-size: 14px;
-          }
-
-          .section-title {
-            font-size: 14px;
-            font-weight: bold;
-            margin-top: 4px;
-          }
-
-          .muted {
-            color: #666;
-            font-size: 14px;
-          }
-
-          .error-box {
-            background: #fff1f0;
-            border: 1px solid #f3c2be;
-            color: #a94442;
-            border-radius: 8px;
-            padding: 10px;
-            font-size: 13px;
-            word-break: break-word;
-          }
-
-          .links {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-          }
-
-          .actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 6px;
-          }
-
-          input[type="file"],
-          input[type="number"],
-          button {
-            border: 1px solid #ccc;
-            background: #fff;
-            color: #222;
-            border-radius: 8px;
-            padding: 8px 12px;
-            cursor: pointer;
-          }
-
-          button:hover {
-            background: #f2f2f2;
-          }
-
-          button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-          }
-
-          a {
-            color: #0b57d0;
-            text-decoration: none;
-            word-break: break-all;
-            font-size: 14px;
-          }
-
-          a:hover {
-            text-decoration: underline;
-          }
-
-          ul {
-            margin: 6px 0 0 18px;
-            padding: 0;
-          }
-
-          li {
-            margin: 2px 0;
-          }
-        </style>
-      </head>
-      <body>
-        <div id="topbar">
-          <div>
-            <h1>Trend Yemen Admin UI</h1>
-            <p>Simple admin view powered by <code>/admin/overview</code></p>
-          </div>
-          <button onclick="loadProducts()">Refresh</button>
-        </div>
-
-        <div id="create-box">
-          <div class="section-title">Create product</div>
-          <form id="create-form">
-            <input id="image-input" type="file" accept="image/*" required />
-            <input id="price-input" type="number" step="any" min="0" placeholder="Price (YER)" required />
-            <button type="submit">Create Product</button>
-          </form>
-          <div id="create-result"></div>
-        </div>
-
-        <div id="status">Loading products...</div>
-        <div id="error"></div>
-        <div id="grid"></div>
-
-        <script>
-          function normalizeImageUrl(url) {
-            if (!url) return "";
-
-            const value = String(url).trim();
-
-            const filePathMatch = value.match(/drive\\.google\\.com\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
-            if (filePathMatch) {
-              const fileId = filePathMatch[1];
-              return `https://drive.google.com/uc?export=view&id=${fileId}`;
-            }
-
-            const queryIdMatch = value.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-            if (queryIdMatch) {
-              const fileId = queryIdMatch[1];
-              return `https://drive.google.com/uc?export=view&id=${fileId}`;
-            }
-
-            return value;
-          }
-
-          function escapeHtml(value) {
-            return String(value ?? "")
-              .replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;")
-              .replace(/"/g, "&quot;")
-              .replace(/'/g, "&#39;");
-          }
-
-          function badgeClass(status) {
-            const value = String(status || "").trim().toLowerCase();
-            if (value === "ready") return "badge badge-ready";
-            if (value === "needs_review") return "badge badge-needs-review";
-            if (value === "invalid") return "badge badge-invalid";
-            return "badge badge-unknown";
-          }
-
-          async function apiPost(path) {
-            const response = await fetch(path, { method: "POST" });
-            if (!response.ok) {
-              const text = await response.text();
-              throw new Error(text || ("Request failed: " + response.status));
-            }
-            return response.json();
-          }
-
-          async function retryRow(rowId) {
-            if (!rowId) return;
-            try {
-              await apiPost("/retry_row?id=" + encodeURIComponent(rowId));
-              await loadProducts();
-            } catch (error) {
-              showError(error.message || "Retry failed");
-            }
-          }
-
-          async function deleteRow(rowId) {
-            if (!rowId) return;
-            const confirmed = confirm("Delete row " + rowId + "?");
-            if (!confirmed) return;
-
-            try {
-              await apiPost("/delete_row?id=" + encodeURIComponent(rowId));
-              await loadProducts();
-            } catch (error) {
-              showError(error.message || "Delete failed");
-            }
-          }
-
-          async function createProduct(event) {
-            event.preventDefault();
-
-            const imageInput = document.getElementById("image-input");
-            const priceInput = document.getElementById("price-input");
-            const resultEl = document.getElementById("create-result");
-
-            const file = imageInput.files[0];
-            const price = (priceInput.value || "").trim();
-
-            if (!file) {
-              resultEl.textContent = "Please choose an image file";
-              return;
-            }
-
-            if (!price) {
-              resultEl.textContent = "Please enter price";
-              return;
-            }
-
-            const formData = new FormData();
-            formData.append("image", file);
-            formData.append("price", price);
-
-            resultEl.textContent = "Creating product...";
-
-            try {
-              const response = await fetch("/admin/create_product", {
-                method: "POST",
-                body: formData
-              });
-
-              const data = await response.json();
-
-              if (!response.ok) {
-                throw new Error(data.message || "Create product failed");
-              }
-
-              resultEl.textContent =
-                "Created successfully\\n" +
-                "row_id: " + (data.row_id || "") + "\\n" +
-                "status: " + (data.status || "") + "\\n" +
-                "image_url: " + (data.image_url || "");
-
-              imageInput.value = "";
-              priceInput.value = "";
-              await loadProducts();
-            } catch (error) {
-              resultEl.textContent = error.message || "Create product failed";
-            }
-          }
-
-          function showError(message) {
-            const errorEl = document.getElementById("error");
-            if (!message) {
-              errorEl.style.display = "none";
-              errorEl.textContent = "";
-              return;
-            }
-            errorEl.style.display = "block";
-            errorEl.textContent = message;
-          }
-
-          async function loadProducts() {
-            const statusEl = document.getElementById("status");
-            const gridEl = document.getElementById("grid");
-
-            showError("");
-            gridEl.innerHTML = "";
-            statusEl.textContent = "Loading products...";
-
-            try {
-              const response = await fetch("/admin/overview");
-              if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || ("Request failed: " + response.status));
-              }
-
-              const products = await response.json();
-              const records = Array.isArray(products) ? products : [];
-
-              statusEl.textContent = records.length + " products loaded";
-
-              if (!records.length) {
-                gridEl.innerHTML = "<div>No products found</div>";
-                return;
-              }
-
-              gridEl.innerHTML = records.map((product) => {
-                const productName = product.product_name || "Untitled Product";
-                const rowId = product.row_id || "";
-                const categoryId = product.category_id || "—";
-                const processingStatus = product.processing_status || "—";
-                const readinessStatus = (product.readiness && product.readiness.status)
-                  ? product.readiness.status
-                  : "invalid";
-
-                const smart = product.smart_encoding_inputs || {};
-                const missingFields = Array.isArray(smart.missing_fields) ? smart.missing_fields : [];
-
-                const rawFinalUrl = product.final_image_url || "";
-                const rawSourceUrl = product.source_image_url || "";
-
-                const imageUrl = normalizeImageUrl(rawFinalUrl || rawSourceUrl);
-                const detailUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
-
-                const errorMessage = product.error_message || "";
-
-                const imageHtml = imageUrl
-                  ? `<img class="preview" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(productName)}"
-                        onerror="this.outerHTML='<div class=&quot;placeholder&quot;>No image</div>'" />`
-                  : `<div class="placeholder">No image</div>`;
-
-                const missingHtml = missingFields.length
-                  ? `<ul>${missingFields.map(field => `<li>${escapeHtml(field)}</li>`).join("")}</ul>`
-                  : `<div class="muted">No missing fields</div>`;
-
-                const errorHtml = errorMessage
-                  ? `<div class="error-box">${escapeHtml(errorMessage)}</div>`
-                  : `<div class="muted">No error</div>`;
-
-                return `
-                  <div class="card">
-                    <div class="card-head">
-                      <h3>${escapeHtml(productName)}</h3>
-                      <span class="${badgeClass(readinessStatus)}">${escapeHtml(readinessStatus)}</span>
-                    </div>
-
-                    <div class="meta"><strong>Row ID:</strong> ${escapeHtml(rowId || "—")}</div>
-                    <div class="meta"><strong>Category:</strong> ${escapeHtml(categoryId)}</div>
-                    <div class="meta"><strong>Processing:</strong> ${escapeHtml(processingStatus)}</div>
-
-                    ${imageHtml}
-
-                    <div class="section-title">Missing fields</div>
-                    ${missingHtml}
-
-                    <div class="section-title">Error message</div>
-                    ${errorHtml}
-
-                    <div class="links">
-                      <a href="${escapeHtml(rawFinalUrl)}" target="_blank">Final image link</a>
-                      <a href="${escapeHtml(rawSourceUrl)}" target="_blank">Source image link</a>
-                      <a href="${escapeHtml(detailUrl)}" target="_blank">View product JSON</a>
-                    </div>
-
-                    <div class="actions">
-                      <button onclick="retryRow('${escapeHtml(rowId)}')">Retry</button>
-                      <button onclick="deleteRow('${escapeHtml(rowId)}')">Delete</button>
-                    </div>
-                  </div>
-                `;
-              }).join("");
-
-            } catch (error) {
-              statusEl.textContent = "Failed to load products";
-              showError(error.message || "Unknown error");
-            }
-          }
-
-          document.getElementById("create-form").addEventListener("submit", createProduct);
-          loadProducts();
-        </script>
-      </body>
+    <html>
+    <head>
+      <meta charset="utf-8"/>
+      <title>Admin Registry</title>
+      <style>
+        body { font-family: Arial; padding:20px; background:#f5f5f5; }
+        .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px; }
+        input, select, button { padding:8px; border-radius:6px; border:1px solid #ccc; }
+
+        .list { background:#fff; border-radius:8px; border:1px solid #ddd; }
+        .row {
+          display:flex; gap:10px; align-items:center;
+          padding:8px; border-bottom:1px solid #eee;
+          cursor:pointer;
+        }
+        .row:hover { background:#f0f0f0; }
+        .row.selected { background:#dbe9ff; }
+
+        .thumb { width:40px; height:40px; object-fit:cover; border-radius:6px; border:1px solid #ccc; }
+
+        .details {
+          margin-top:15px; background:#fff;
+          border:1px solid #ddd; border-radius:8px;
+          padding:12px;
+        }
+      </style>
+    </head>
+    <body>
+
+      <div class="toolbar">
+        <input id="search" placeholder="Search"/>
+        <select id="category"></select>
+        <select id="status">
+          <option value="">All Status</option>
+          <option>Pending</option>
+          <option>Processing</option>
+          <option>Completed</option>
+          <option>Failed</option>
+        </select>
+        <button onclick="toggleAll()">Show All</button>
+        <button onclick="load()">Refresh</button>
+      </div>
+
+      <div id="list" class="list"></div>
+      <div id="details" class="details" style="display:none;"></div>
+
+      <script>
+        let DATA=[], SELECTED=null, SHOW_ALL=false;
+
+        function norm(u){
+          if(!u) return "";
+          let m=u.match(/id=([a-zA-Z0-9_-]+)/);
+          return m ? "https://drive.google.com/uc?export=view&id="+m[1] : u;
+        }
+
+        function load(){
+          fetch("/admin/overview").then(r=>r.json()).then(d=>{
+            DATA=d;
+            buildCat();
+            render();
+          });
+        }
+
+        function buildCat(){
+          let cats=[...new Set(DATA.map(x=>x.category_id).filter(Boolean))];
+          let el=document.getElementById("category");
+          el.innerHTML="<option value=''>All</option>"+cats.map(c=>"<option>"+c+"</option>").join("");
+        }
+
+        function toggleAll(){ SHOW_ALL=!SHOW_ALL; render(); }
+
+        function render(){
+          let s=document.getElementById("search").value.toLowerCase();
+          let c=document.getElementById("category").value;
+          let st=document.getElementById("status").value;
+
+          let list=DATA.filter(p=>{
+            if(s && !(p.product_name||"").toLowerCase().includes(s)) return false;
+            if(c && p.category_id!==c) return false;
+            if(st && p.processing_status!==st) return false;
+            return true;
+          });
+
+          if(!SHOW_ALL) list=list.slice(0,50);
+
+          document.getElementById("list").innerHTML = list.map(p=>`
+            <div class="row ${SELECTED===p.row_id?"selected":""}" onclick="selectRow('${p.row_id}')">
+              <img class="thumb" src="${norm(p.source_image_url)}"/>
+              <div>${p.product_name||"—"}</div>
+              <div>${p.category_id||"—"}</div>
+              <div>${p.processing_status||"—"}</div>
+              <div>${(p.readiness||{}).status||"—"}</div>
+              <div>${p.row_id}</div>
+            </div>
+          `).join("");
+        }
+
+        function selectRow(id){
+          SELECTED=id; render();
+          let p=DATA.find(x=>x.row_id===id);
+          if(!p) return;
+
+          document.getElementById("details").style.display="block";
+          document.getElementById("details").innerHTML=`
+            <h3>${p.product_name}</h3>
+            <div>Row: ${p.row_id}</div>
+            <div>Status: ${p.processing_status}</div>
+            <div>Category: ${p.category_id}</div>
+            <div>Readiness: ${(p.readiness||{}).status}</div>
+            <div>Error: ${p.error_message||"—"}</div>
+            <div>Missing: ${(p.smart_encoding_inputs?.missing_fields||[]).join(", ")}</div>
+            <div>
+              <a href="${p.source_image_url}" target="_blank">Source</a> |
+              <a href="${p.final_image_url}" target="_blank">Final</a> |
+              <a href="/admin/product?row_id=${p.row_id}" target="_blank">JSON</a>
+            </div>
+            <div>
+              <button onclick="retry('${p.row_id}')">Retry</button>
+              <button onclick="del('${p.row_id}')">Delete</button>
+            </div>
+          `;
+        }
+
+        function retry(id){ fetch("/retry_row?id="+id,{method:"POST"}).then(load); }
+        function del(id){
+          if(!confirm("Delete?")) return;
+          fetch("/delete_row?id="+id,{method:"POST"}).then(load);
+        }
+
+        document.getElementById("search").oninput=render;
+        document.getElementById("category").onchange=render;
+        document.getElementById("status").onchange=render;
+
+        load();
+      </script>
+
+    </body>
     </html>
     """
 
