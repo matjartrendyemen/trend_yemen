@@ -252,436 +252,561 @@ def admin_create_product():
 def admin_ui():
     return """
     <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8"/>
-      <meta name="viewport" content="width=device-width,initial-scale=1"/>
-      <title>Admin Registry</title>
-      <style>
-        * { box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; padding:20px; margin:0; background:#f5f5f5; color:#222; }
+    <html lang="en" dir="ltr">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Trend Yemen Admin UI</title>
+        <style>
+          * { box-sizing: border-box; }
 
-        .page-title { margin: 0 0 8px; }
-        .page-subtitle { margin: 0 0 18px; color:#666; }
-
-        .create-box,
-        .list,
-        .details {
-          background:#fff;
-          border:1px solid #ddd;
-          border-radius:8px;
-        }
-
-        .create-box {
-          padding:12px;
-          margin-bottom:15px;
-        }
-
-        .toolbar {
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-          margin-bottom:15px;
-        }
-
-        input, select, button {
-          padding:8px;
-          border-radius:6px;
-          border:1px solid #ccc;
-          background:#fff;
-        }
-
-        button { cursor:pointer; }
-        button:hover { background:#f0f0f0; }
-
-        #create-form {
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-          align-items:center;
-        }
-
-        #create-result {
-          margin-top:10px;
-          white-space:pre-wrap;
-          word-break:break-word;
-          color:#444;
-          font-size:14px;
-        }
-
-        .list-header {
-          display:grid;
-          grid-template-columns: 48px minmax(160px, 2fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(120px, 1fr) 90px;
-          gap:10px;
-          padding:10px 8px;
-          border-bottom:1px solid #eee;
-          font-size:13px;
-          font-weight:bold;
-          color:#666;
-          background:#fafafa;
-        }
-
-        .row {
-          display:grid;
-          grid-template-columns: 48px minmax(160px, 2fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(120px, 1fr) 90px;
-          gap:10px;
-          align-items:center;
-          padding:8px;
-          border-bottom:1px solid #eee;
-          cursor:pointer;
-        }
-
-        .row:hover { background:#f0f0f0; }
-        .row.selected { background:#dbe9ff; }
-
-        .thumb {
-          width:40px;
-          height:40px;
-          object-fit:cover;
-          border-radius:6px;
-          border:1px solid #ccc;
-          background:#eee;
-          display:block;
-        }
-
-        .thumb-fallback {
-          width:40px;
-          height:40px;
-          border-radius:6px;
-          border:1px solid #ccc;
-          background:#eee;
-          color:#777;
-          font-size:11px;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-        }
-
-        .cell-muted {
-          color:#666;
-          font-size:13px;
-        }
-
-        .details {
-          margin-top:15px;
-          padding:12px;
-        }
-
-        .details h3 {
-          margin-top:0;
-          margin-bottom:10px;
-        }
-
-        .details-grid {
-          display:grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap:10px;
-          margin-bottom:12px;
-        }
-
-        .details-box {
-          background:#fafafa;
-          border:1px solid #eee;
-          border-radius:6px;
-          padding:10px;
-          font-size:14px;
-        }
-
-        .links, .actions {
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-          margin-top:10px;
-        }
-
-        .error-box {
-          padding:10px;
-          background:#fff1f0;
-          border:1px solid #f3c2be;
-          color:#a94442;
-          border-radius:6px;
-          margin-top:10px;
-          white-space:pre-wrap;
-          word-break:break-word;
-        }
-
-        .hidden { display:none; }
-      </style>
-    </head>
-    <body>
-      <h1 class="page-title">Admin Registry</h1>
-      <p class="page-subtitle">Control center with compact product registry and on-demand details.</p>
-
-      <div class="create-box">
-        <form id="create-form">
-          <input id="image-input" type="file" accept="image/*" required />
-          <input id="price-input" type="number" step="any" min="0" placeholder="Price (YER)" required />
-          <button type="submit">Create Product</button>
-        </form>
-        <div id="create-result"></div>
-      </div>
-
-      <div class="toolbar">
-        <input id="search" placeholder="Search by product name"/>
-        <select id="category"></select>
-        <select id="status">
-          <option value="">All Status</option>
-          <option>Pending</option>
-          <option>Processing</option>
-          <option>Completed</option>
-          <option>Failed</option>
-        </select>
-        <button onclick="toggleAll()">Show All</button>
-        <button onclick="load()">Refresh</button>
-      </div>
-
-      <div id="error" class="error-box hidden"></div>
-
-      <div id="list" class="list"></div>
-      <div id="details" class="details" style="display:none;"></div>
-
-      <script>
-        let DATA = [];
-        let SELECTED = null;
-        let SHOW_ALL = false;
-
-        function escapeHtml(value){
-          return String(value ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-        }
-
-        function norm(u){
-          if(!u) return "";
-
-          const value = String(u).trim();
-
-          if(value.startsWith("/admin/seed_image")) return value;
-          if(value.includes("/admin/seed_image/")) return value;
-
-          return "";
-        }
-
-        function showError(message){
-          const box = document.getElementById("error");
-          if(!message){
-            box.classList.add("hidden");
-            box.textContent = "";
-            return;
-          }
-          box.classList.remove("hidden");
-          box.textContent = message;
-        }
-
-        function buildCat(){
-          let cats = [...new Set(DATA.map(x => x.category_id).filter(Boolean))];
-          let el = document.getElementById("category");
-          el.innerHTML = "<option value=''>All Categories</option>" +
-            cats.map(c => "<option>" + escapeHtml(c) + "</option>").join("");
-        }
-
-        function toggleAll(){
-          SHOW_ALL = !SHOW_ALL;
-          render();
-        }
-
-        function renderThumb(url){
-          const normalized = norm(url);
-          if(!normalized){
-            return '<div class="thumb-fallback">No img</div>';
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f7f7f7;
+            color: #222;
           }
 
-          return '<img class="thumb" src="' + escapeHtml(normalized) + '" onerror="this.outerHTML=\\'<div class=&quot;thumb-fallback&quot;>No img</div>\\'"/>';
-        }
-
-        function render(){
-          let s = document.getElementById("search").value.toLowerCase();
-          let c = document.getElementById("category").value;
-          let st = document.getElementById("status").value;
-
-          let list = DATA.filter(p => {
-            if(s && !(p.product_name || "").toLowerCase().includes(s)) return false;
-            if(c && p.category_id !== c) return false;
-            if(st && p.processing_status !== st) return false;
-            return true;
-          });
-
-          if(!SHOW_ALL) list = list.slice(0, 50);
-
-          const header = `
-            <div class="list-header">
-              <div>Image</div>
-              <div>Name</div>
-              <div>Category</div>
-              <div>Status</div>
-              <div>Readiness</div>
-              <div>Row ID</div>
-            </div>
-          `;
-
-          document.getElementById("list").innerHTML = header + list.map(p => `
-            <div class="row ${SELECTED === p.row_id ? "selected" : ""}" onclick="selectRow('${escapeHtml(p.row_id)}')">
-              <div>${renderThumb(p.source_image_url)}</div>
-              <div>${escapeHtml(p.product_name || "—")}</div>
-              <div class="cell-muted">${escapeHtml(p.category_id || "—")}</div>
-              <div class="cell-muted">${escapeHtml(p.processing_status || "—")}</div>
-              <div class="cell-muted">${escapeHtml((p.readiness || {}).status || "—")}</div>
-              <div class="cell-muted">${escapeHtml(p.row_id || "—")}</div>
-            </div>
-          `).join("");
-
-          if(SELECTED && !DATA.find(x => x.row_id === SELECTED)){
-            document.getElementById("details").style.display = "none";
+          .page {
+            max-width: 1360px;
+            margin: 0 auto;
           }
-        }
 
-        function selectRow(id){
-          SELECTED = id;
-          render();
+          h1 {
+            margin: 0 0 8px;
+          }
 
-          let p = DATA.find(x => x.row_id === id);
-          if(!p) return;
+          p {
+            margin: 0;
+            color: #666;
+          }
 
-          const readiness = (p.readiness || {}).status || "—";
-          const missingFields = ((p.smart_encoding_inputs || {}).missing_fields || []).join(", ") || "—";
-          const sourceLink = p.source_image_url || "";
-          const finalLink = p.final_image_url || "";
-          const sourcePreview = norm(sourceLink);
+          .topbar {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+          }
 
-          document.getElementById("details").style.display = "block";
-          document.getElementById("details").innerHTML = `
-            <h3>${escapeHtml(p.product_name || "Untitled Product")}</h3>
+          .toolbar-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+          }
 
-            <div class="details-grid">
-              <div class="details-box"><strong>Row ID:</strong><br>${escapeHtml(p.row_id || "—")}</div>
-              <div class="details-box"><strong>Category:</strong><br>${escapeHtml(p.category_id || "—")}</div>
-              <div class="details-box"><strong>Status:</strong><br>${escapeHtml(p.processing_status || "—")}</div>
-              <div class="details-box"><strong>Readiness:</strong><br>${escapeHtml(readiness)}</div>
-              <div class="details-box"><strong>Missing fields:</strong><br>${escapeHtml(missingFields)}</div>
-              <div class="details-box"><strong>Error:</strong><br>${escapeHtml(p.error_message || "—")}</div>
-            </div>
+          #status {
+            margin-bottom: 14px;
+            color: #555;
+            font-size: 14px;
+          }
 
+          #error {
+            display: none;
+            margin-bottom: 14px;
+            padding: 10px 12px;
+            background: #ffe5e5;
+            border: 1px solid #ffb3b3;
+            color: #a40000;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+
+          .registry-shell {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            overflow: hidden;
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 980px;
+          }
+
+          thead {
+            background: #f3f4f6;
+          }
+
+          th, td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #ececec;
+            text-align: left;
+            vertical-align: middle;
+            font-size: 14px;
+          }
+
+          th {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #555;
+            white-space: nowrap;
+          }
+
+          tbody tr:hover {
+            background: #fafafa;
+          }
+
+          .cell-preview {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 220px;
+          }
+
+          .thumb,
+          .thumb-placeholder {
+            width: 46px;
+            height: 46px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            background: #f0f0f0;
+            flex: 0 0 auto;
+          }
+
+          .thumb {
+            object-fit: cover;
+          }
+
+          .thumb-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #777;
+            font-size: 11px;
+          }
+
+          .preview-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+          }
+
+          .preview-title {
+            font-weight: bold;
+            color: #222;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 240px;
+          }
+
+          .preview-sub {
+            color: #666;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 240px;
+          }
+
+          .badge {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid #d7d7d7;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            white-space: nowrap;
+            background: #f5f5f5;
+            color: #444;
+          }
+
+          .badge-pending {
+            background: #fff7db;
+            border-color: #f0ddb0;
+            color: #8a6300;
+          }
+
+          .badge-processing {
+            background: #e8f1ff;
+            border-color: #c8dafc;
+            color: #175cd3;
+          }
+
+          .badge-completed {
+            background: #e8f7ec;
+            border-color: #c4e7ce;
+            color: #18794e;
+          }
+
+          .badge-failed {
+            background: #ffeaea;
+            border-color: #f5c2c2;
+            color: #b42318;
+          }
+
+          .badge-unknown {
+            background: #f3f3f3;
+            border-color: #ddd;
+            color: #555;
+          }
+
+          .muted {
+            color: #777;
+          }
+
+          .num {
+            white-space: nowrap;
+          }
+
+          .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            white-space: nowrap;
+          }
+
+          button,
+          .link-button {
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #222;
+            border-radius: 8px;
+            padding: 7px 10px;
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+
+          button:hover,
+          .link-button:hover {
+            background: #f3f3f3;
+          }
+
+          button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+          }
+
+          .empty-state {
+            padding: 28px 20px;
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="topbar">
             <div>
-              ${sourcePreview
-                ? '<img class="thumb" style="width:96px;height:96px;" src="' + escapeHtml(sourcePreview) + '" onerror="this.outerHTML=\\'<div class=&quot;thumb-fallback&quot; style=&quot;width:96px;height:96px;&quot;>No img</div>\\'"/>'
-                : '<div class="thumb-fallback" style="width:96px;height:96px;">No img</div>'
-              }
+              <h1>Trend Yemen Admin UI</h1>
+              <p>Compact registry view powered by <code>/admin/overview</code></p>
             </div>
 
-            <div class="links">
-              ${sourceLink ? '<a href="' + escapeHtml(sourceLink) + '" target="_blank">Source link</a>' : ''}
-              ${finalLink ? '<a href="' + escapeHtml(finalLink) + '" target="_blank">Final link</a>' : ''}
-              <a href="/admin/product?row_id=${escapeHtml(p.row_id)}" target="_blank">JSON</a>
+            <div class="toolbar-actions">
+              <button id="refreshBtn" type="button">Refresh</button>
             </div>
+          </div>
 
-            <div class="actions">
-              <button onclick="retry('${escapeHtml(p.row_id)}')">Retry</button>
-              <button onclick="del('${escapeHtml(p.row_id)}')">Delete</button>
+          <div id="status">Loading registry...</div>
+          <div id="error"></div>
+
+          <div class="registry-shell">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Row ID</th>
+                    <th>Preview</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Price</th>
+                    <th>Last Updated</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="registryBody">
+                  <tr>
+                    <td colspan="7" class="empty-state">Loading registry...</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          `;
-        }
+          </div>
+        </div>
 
-        function retry(id){
-          fetch("/retry_row?id=" + encodeURIComponent(id), {method:"POST"})
-            .then(load)
-            .catch(err => showError(err.message || "Retry failed"));
-        }
-
-        function del(id){
-          if(!confirm("Delete?")) return;
-          fetch("/delete_row?id=" + encodeURIComponent(id), {method:"POST"})
-            .then(load)
-            .catch(err => showError(err.message || "Delete failed"));
-        }
-
-        async function createProduct(event){
-          event.preventDefault();
-
-          const imageInput = document.getElementById("image-input");
-          const priceInput = document.getElementById("price-input");
-          const resultEl = document.getElementById("create-result");
-
-          const file = imageInput.files[0];
-          const price = (priceInput.value || "").trim();
-
-          if(!file){
-            resultEl.textContent = "Please choose an image file";
-            return;
+        <script>
+          function escapeHtml(value) {
+            return String(value ?? "")
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#39;");
           }
 
-          if(!price){
-            resultEl.textContent = "Please enter price";
-            return;
-          }
+          function normalizeImageUrl(url) {
+            if (!url) return "";
 
-          const formData = new FormData();
-          formData.append("image", file);
-          formData.append("price", price);
+            const value = String(url).trim();
 
-          resultEl.textContent = "Creating product...";
-
-          try {
-            const response = await fetch("/admin/create_product", {
-              method: "POST",
-              body: formData
-            });
-
-            const data = await response.json();
-
-            if(!response.ok){
-              throw new Error(data.message || "Create product failed");
+            const filePathMatch = value.match(/drive\\.google\\.com\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
+            if (filePathMatch) {
+              const fileId = filePathMatch[1];
+              return "https://drive.google.com/uc?export=view&id=" + fileId;
             }
 
-            resultEl.textContent =
-              "Created successfully\\n" +
-              "row_id: " + (data.row_id || "") + "\\n" +
-              "status: " + (data.status || "") + "\\n" +
-              "image_url: " + (data.image_url || "");
+            const queryIdMatch = value.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (queryIdMatch) {
+              const fileId = queryIdMatch[1];
+              return "https://drive.google.com/uc?export=view&id=" + fileId;
+            }
 
-            imageInput.value = "";
-            priceInput.value = "";
-            await load();
-          } catch (error){
-            resultEl.textContent = error.message || "Create product failed";
+            return value;
           }
-        }
 
-        async function load(){
-          showError("");
-          try {
-            const response = await fetch("/admin/overview");
-            if(!response.ok){
+          function getPreviewUrl(record) {
+            return normalizeImageUrl(
+              record.final_image_url ||
+              record.source_image_url ||
+              record.image_url ||
+              ""
+            );
+          }
+
+          function getPreviewLabel(record) {
+            return (
+              record.product_name ||
+              record.title ||
+              record.name ||
+              record.row_id ||
+              "Untitled"
+            );
+          }
+
+          function getPreviewSub(record) {
+            const source = record.final_image_url
+              ? "Final image"
+              : record.source_image_url
+              ? "Source image"
+              : record.image_url
+              ? "Image"
+              : "No image";
+
+            return source;
+          }
+
+          function getCategoryValue(record) {
+            return (
+              record.category_id ||
+              record.category ||
+              "—"
+            );
+          }
+
+          function getStatusValue(record) {
+            return (
+              record.processing_status ||
+              record.status ||
+              "—"
+            );
+          }
+
+          function getPriceValue(record) {
+            const value = (
+              record.price ??
+              record.price_yer ??
+              record.price_value ??
+              ""
+            );
+
+            if (value === null || value === undefined || String(value).trim() === "") {
+              return "—";
+            }
+
+            return String(value);
+          }
+
+          function getLastUpdatedValue(record) {
+            return (
+              record.last_updated ||
+              record.updated_at ||
+              record.modified_at ||
+              record.created_at ||
+              "—"
+            );
+          }
+
+          function getStatusClass(status) {
+            const normalized = String(status || "").trim().toLowerCase();
+
+            if (normalized === "pending") return "badge badge-pending";
+            if (normalized === "processing") return "badge badge-processing";
+            if (normalized === "completed") return "badge badge-completed";
+            if (normalized === "failed") return "badge badge-failed";
+
+            return "badge badge-unknown";
+          }
+
+          function setStatus(text) {
+            document.getElementById("status").textContent = text;
+          }
+
+          function clearError() {
+            const errorEl = document.getElementById("error");
+            errorEl.style.display = "none";
+            errorEl.textContent = "";
+          }
+
+          function showError(text) {
+            const errorEl = document.getElementById("error");
+            errorEl.style.display = "block";
+            errorEl.textContent = text || "Unknown error";
+          }
+
+          function renderEmpty(message) {
+            const body = document.getElementById("registryBody");
+            body.innerHTML = `
+              <tr>
+                <td colspan="7" class="empty-state">${escapeHtml(message)}</td>
+              </tr>
+            `;
+          }
+
+          function renderRows(records) {
+            const body = document.getElementById("registryBody");
+
+            if (!Array.isArray(records) || !records.length) {
+              renderEmpty("No records found");
+              return;
+            }
+
+            body.innerHTML = records.map((record) => {
+              const rowId = record.row_id || "—";
+              const previewUrl = getPreviewUrl(record);
+              const previewLabel = getPreviewLabel(record);
+              const previewSub = getPreviewSub(record);
+              const category = getCategoryValue(record);
+              const status = getStatusValue(record);
+              const price = getPriceValue(record);
+              const lastUpdated = getLastUpdatedValue(record);
+              const jsonUrl = "/admin/product?row_id=" + encodeURIComponent(record.row_id || "");
+
+              const previewHtml = previewUrl
+                ? `<img class="thumb" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(previewLabel)}" onerror="this.outerHTML='&lt;div class=&quot;thumb-placeholder&quot;&gt;No image&lt;/div&gt;'" />`
+                : `<div class="thumb-placeholder">No image</div>`;
+
+              const retryDisabled = record.row_id ? "" : "disabled";
+              const deleteDisabled = record.row_id ? "" : "disabled";
+              const jsonDisabled = record.row_id ? "" : "aria-disabled=\\"true\\"";
+
+              return `
+                <tr>
+                  <td class="num">${escapeHtml(rowId)}</td>
+                  <td>
+                    <div class="cell-preview">
+                      ${previewHtml}
+                      <div class="preview-text">
+                        <div class="preview-title">${escapeHtml(previewLabel)}</div>
+                        <div class="preview-sub">${escapeHtml(previewSub)}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>${escapeHtml(category)}</td>
+                  <td><span class="${getStatusClass(status)}">${escapeHtml(status)}</span></td>
+                  <td>${escapeHtml(price)}</td>
+                  <td>${escapeHtml(lastUpdated)}</td>
+                  <td>
+                    <div class="actions">
+                      <button type="button" onclick="retryRow('${escapeHtml(String(record.row_id || ""))}')" ${retryDisabled}>Retry</button>
+                      <button type="button" onclick="deleteRow('${escapeHtml(String(record.row_id || ""))}')" ${deleteDisabled}>Delete</button>
+                      <a class="link-button" href="${escapeHtml(jsonUrl)}" target="_blank" ${jsonDisabled}>View JSON</a>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join("");
+          }
+
+          async function fetchJson(url, options) {
+            const response = await fetch(url, options);
+
+            if (!response.ok) {
               const text = await response.text();
               throw new Error(text || ("Request failed: " + response.status));
             }
 
-            const d = await response.json();
-            DATA = Array.isArray(d) ? d : [];
-            buildCat();
-            render();
-
-            if(SELECTED){
-              const found = DATA.find(x => x.row_id === SELECTED);
-              if(found){
-                selectRow(SELECTED);
-              }
-            }
-          } catch (error){
-            showError(error.message || "Failed to load registry");
+            return response.json();
           }
-        }
 
-        document.getElementById("search").oninput = render;
-        document.getElementById("category").onchange = render;
-        document.getElementById("status").onchange = render;
-        document.getElementById("create-form").addEventListener("submit", createProduct);
+          async function loadRegistry() {
+            clearError();
+            setStatus("Loading registry...");
+            renderEmpty("Loading registry...");
 
-        load();
-      </script>
-    </body>
+            try {
+              const data = await fetchJson("/admin/overview");
+              const records = Array.isArray(data) ? data : [];
+
+              renderRows(records);
+              setStatus(records.length + " records loaded");
+            } catch (error) {
+              renderEmpty("Unable to load registry");
+              setStatus("Failed to load registry");
+              showError(error.message || "Unknown error");
+            }
+          }
+
+          async function retryRow(rowId) {
+            if (!rowId) return;
+
+            clearError();
+            setStatus("Retrying row " + rowId + "...");
+
+            try {
+              await fetchJson("/retry_row?id=" + encodeURIComponent(rowId), {
+                method: "POST"
+              });
+              await loadRegistry();
+            } catch (error) {
+              setStatus("Failed to retry row");
+              showError(error.message || "Unknown error");
+            }
+          }
+
+          async function deleteRow(rowId) {
+            if (!rowId) return;
+
+            const confirmed = confirm("Delete row " + rowId + "?");
+            if (!confirmed) return;
+
+            clearError();
+            setStatus("Deleting row " + rowId + "...");
+
+            try {
+              await fetchJson("/delete_row?id=" + encodeURIComponent(rowId), {
+                method: "POST"
+              });
+              await loadRegistry();
+            } catch (error) {
+              setStatus("Failed to delete row");
+              showError(error.message || "Unknown error");
+            }
+          }
+
+          document.getElementById("refreshBtn").addEventListener("click", loadRegistry);
+
+          window.retryRow = retryRow;
+          window.deleteRow = deleteRow;
+
+          loadRegistry();
+        </script>
+      </body>
     </html>
     """
 
