@@ -261,34 +261,36 @@ def admin_ui():
           * { box-sizing: border-box; }
 
           body {
-            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 20px;
-            background: #f7f7f7;
-            color: #222;
+            font-family: Arial, sans-serif;
+            background: #f6f7f9;
+            color: #1f2937;
           }
 
           .page {
-            max-width: 1360px;
+            max-width: 1420px;
             margin: 0 auto;
-          }
-
-          h1 {
-            margin: 0 0 8px;
-          }
-
-          p {
-            margin: 0;
-            color: #666;
+            padding: 20px;
           }
 
           .topbar {
             display: flex;
-            align-items: flex-start;
             justify-content: space-between;
+            align-items: flex-start;
             gap: 12px;
             flex-wrap: wrap;
-            margin-bottom: 18px;
+            margin-bottom: 16px;
+          }
+
+          .topbar h1 {
+            margin: 0 0 6px;
+            font-size: 28px;
+          }
+
+          .topbar p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 14px;
           }
 
           .toolbar-actions {
@@ -297,28 +299,53 @@ def admin_ui():
             align-items: center;
           }
 
+          button,
+          .json-link {
+            border: 1px solid #d1d5db;
+            background: #ffffff;
+            color: #111827;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+          }
+
+          button:hover,
+          .json-link:hover {
+            background: #f3f4f6;
+          }
+
           #status {
-            margin-bottom: 14px;
-            color: #555;
+            margin-bottom: 12px;
+            color: #4b5563;
             font-size: 14px;
           }
 
           #error {
             display: none;
-            margin-bottom: 14px;
-            padding: 10px 12px;
-            background: #ffe5e5;
-            border: 1px solid #ffb3b3;
-            color: #a40000;
-            border-radius: 8px;
+            margin-bottom: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #fecaca;
+            background: #fef2f2;
+            color: #b91c1c;
             white-space: pre-wrap;
             word-break: break-word;
+            font-size: 14px;
           }
 
-          .registry-shell {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 12px;
+          .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.9fr);
+            gap: 16px;
+            align-items: start;
+          }
+
+          .card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
             overflow: hidden;
           }
 
@@ -329,174 +356,197 @@ def admin_ui():
           table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 980px;
+            min-width: 920px;
           }
 
           thead {
-            background: #f3f4f6;
+            background: #f9fafb;
           }
 
-          th, td {
+          th,
+          td {
             padding: 12px 10px;
-            border-bottom: 1px solid #ececec;
+            border-bottom: 1px solid #eef0f2;
             text-align: left;
             vertical-align: middle;
-            font-size: 14px;
           }
 
           th {
             font-size: 12px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            color: #555;
+            color: #6b7280;
             white-space: nowrap;
           }
 
-          tbody tr:hover {
-            background: #fafafa;
+          td {
+            font-size: 14px;
+            color: #111827;
           }
 
-          .cell-preview {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            min-width: 220px;
+          tbody tr {
+            cursor: pointer;
+            transition: background 0.15s ease;
+          }
+
+          tbody tr:hover {
+            background: #f9fafb;
+          }
+
+          tbody tr.is-selected {
+            background: #eef4ff;
+          }
+
+          .image-cell {
+            width: 72px;
           }
 
           .thumb,
           .thumb-placeholder {
-            width: 46px;
-            height: 46px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            background: #f0f0f0;
-            flex: 0 0 auto;
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            background: #f3f4f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: #6b7280;
+            font-size: 11px;
           }
 
           .thumb {
             object-fit: cover;
           }
 
-          .thumb-placeholder {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #777;
-            font-size: 11px;
+          .name-cell {
+            min-width: 220px;
           }
 
-          .preview-text {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            min-width: 0;
-          }
-
-          .preview-title {
-            font-weight: bold;
-            color: #222;
+          .truncate {
+            max-width: 220px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 240px;
           }
 
-          .preview-sub {
-            color: #666;
-            font-size: 12px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 240px;
+          .muted {
+            color: #6b7280;
           }
 
           .badge {
             display: inline-flex;
             align-items: center;
-            border: 1px solid #d7d7d7;
-            border-radius: 999px;
+            justify-content: center;
             padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid #d1d5db;
             font-size: 12px;
             white-space: nowrap;
-            background: #f5f5f5;
-            color: #444;
+            background: #f9fafb;
+            color: #374151;
           }
 
           .badge-pending {
             background: #fff7db;
-            border-color: #f0ddb0;
+            border-color: #f3dfab;
             color: #8a6300;
           }
 
           .badge-processing {
-            background: #e8f1ff;
-            border-color: #c8dafc;
-            color: #175cd3;
+            background: #e8f0ff;
+            border-color: #cbdcff;
+            color: #1d4ed8;
           }
 
           .badge-completed {
-            background: #e8f7ec;
-            border-color: #c4e7ce;
-            color: #18794e;
+            background: #e9f8ee;
+            border-color: #cdebd7;
+            color: #15803d;
           }
 
           .badge-failed {
-            background: #ffeaea;
-            border-color: #f5c2c2;
-            color: #b42318;
-          }
-
-          .badge-unknown {
-            background: #f3f3f3;
-            border-color: #ddd;
-            color: #555;
-          }
-
-          .muted {
-            color: #777;
-          }
-
-          .num {
-            white-space: nowrap;
-          }
-
-          .actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            white-space: nowrap;
-          }
-
-          button,
-          .link-button {
-            border: 1px solid #ccc;
-            background: #fff;
-            color: #222;
-            border-radius: 8px;
-            padding: 7px 10px;
-            cursor: pointer;
-            font-size: 13px;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-          }
-
-          button:hover,
-          .link-button:hover {
-            background: #f3f3f3;
-          }
-
-          button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+            background: #fef0f0;
+            border-color: #fecaca;
+            color: #b91c1c;
           }
 
           .empty-state {
             padding: 28px 20px;
             text-align: center;
-            color: #666;
+            color: #6b7280;
             font-size: 14px;
+          }
+
+          .details-panel {
+            min-height: 180px;
+          }
+
+          .details-header {
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid #eef0f2;
+          }
+
+          .details-header h2 {
+            margin: 0 0 6px;
+            font-size: 18px;
+          }
+
+          .details-header p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 13px;
+          }
+
+          .details-body {
+            padding: 16px;
+          }
+
+          .details-empty {
+            color: #6b7280;
+            font-size: 14px;
+          }
+
+          .detail-image {
+            width: 100%;
+            max-height: 260px;
+            object-fit: cover;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #f3f4f6;
+            margin-bottom: 14px;
+          }
+
+          .detail-grid {
+            display: grid;
+            grid-template-columns: 110px 1fr;
+            gap: 10px 12px;
+            align-items: start;
+          }
+
+          .detail-label {
+            color: #6b7280;
+            font-size: 13px;
+          }
+
+          .detail-value {
+            color: #111827;
+            font-size: 14px;
+            word-break: break-word;
+          }
+
+          .detail-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+          }
+
+          @media (max-width: 1100px) {
+            .layout {
+              grid-template-columns: 1fr;
+            }
           }
         </style>
       </head>
@@ -505,9 +555,8 @@ def admin_ui():
           <div class="topbar">
             <div>
               <h1>Trend Yemen Admin UI</h1>
-              <p>Compact registry view powered by <code>/admin/overview</code></p>
+              <p>Registry table with row details panel</p>
             </div>
-
             <div class="toolbar-actions">
               <button id="refreshBtn" type="button">Refresh</button>
             </div>
@@ -516,31 +565,45 @@ def admin_ui():
           <div id="status">Loading registry...</div>
           <div id="error"></div>
 
-          <div class="registry-shell">
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Row ID</th>
-                    <th>Preview</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Price</th>
-                    <th>Last Updated</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="registryBody">
-                  <tr>
-                    <td colspan="7" class="empty-state">Loading registry...</td>
-                  </tr>
-                </tbody>
-              </table>
+          <div class="layout">
+            <div class="card">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Image</th>
+                      <th>Name</th>
+                      <th>Category</th>
+                      <th>Status</th>
+                      <th>Price</th>
+                      <th>Row ID</th>
+                    </tr>
+                  </thead>
+                  <tbody id="registryBody">
+                    <tr>
+                      <td colspan="6" class="empty-state">Loading registry...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card details-panel">
+              <div class="details-header">
+                <h2>Details</h2>
+                <p>Click a row to view product details.</p>
+              </div>
+              <div class="details-body" id="detailsPanel">
+                <div class="details-empty">No row selected.</div>
+              </div>
             </div>
           </div>
         </div>
 
         <script>
+          let registryRecords = [];
+          let selectedRowId = "";
+
           function escapeHtml(value) {
             return String(value ?? "")
               .replace(/&/g, "&amp;")
@@ -570,7 +633,7 @@ def admin_ui():
             return value;
           }
 
-          function getPreviewUrl(record) {
+          function getImageUrl(record) {
             return normalizeImageUrl(
               record.final_image_url ||
               record.source_image_url ||
@@ -579,29 +642,16 @@ def admin_ui():
             );
           }
 
-          function getPreviewLabel(record) {
+          function getName(record) {
             return (
               record.product_name ||
               record.title ||
               record.name ||
-              record.row_id ||
               "Untitled"
             );
           }
 
-          function getPreviewSub(record) {
-            const source = record.final_image_url
-              ? "Final image"
-              : record.source_image_url
-              ? "Source image"
-              : record.image_url
-              ? "Image"
-              : "No image";
-
-            return source;
-          }
-
-          function getCategoryValue(record) {
+          function getCategory(record) {
             return (
               record.category_id ||
               record.category ||
@@ -609,7 +659,7 @@ def admin_ui():
             );
           }
 
-          function getStatusValue(record) {
+          function getStatus(record) {
             return (
               record.processing_status ||
               record.status ||
@@ -617,7 +667,7 @@ def admin_ui():
             );
           }
 
-          function getPriceValue(record) {
+          function getPrice(record) {
             const value = (
               record.price ??
               record.price_yer ??
@@ -632,7 +682,11 @@ def admin_ui():
             return String(value);
           }
 
-          function getLastUpdatedValue(record) {
+          function getRowId(record) {
+            return record.row_id || "—";
+          }
+
+          function getLastUpdated(record) {
             return (
               record.last_updated ||
               record.updated_at ||
@@ -650,7 +704,7 @@ def admin_ui():
             if (normalized === "completed") return "badge badge-completed";
             if (normalized === "failed") return "badge badge-failed";
 
-            return "badge badge-unknown";
+            return "badge";
           }
 
           function setStatus(text) {
@@ -673,64 +727,116 @@ def admin_ui():
             const body = document.getElementById("registryBody");
             body.innerHTML = `
               <tr>
-                <td colspan="7" class="empty-state">${escapeHtml(message)}</td>
+                <td colspan="6" class="empty-state">${escapeHtml(message)}</td>
               </tr>
             `;
           }
 
-          function renderRows(records) {
-            const body = document.getElementById("registryBody");
+          function renderDetails(record) {
+            const panel = document.getElementById("detailsPanel");
 
-            if (!Array.isArray(records) || !records.length) {
-              renderEmpty("No records found");
+            if (!record) {
+              panel.innerHTML = '<div class="details-empty">No row selected.</div>';
               return;
             }
 
-            body.innerHTML = records.map((record) => {
-              const rowId = record.row_id || "—";
-              const previewUrl = getPreviewUrl(record);
-              const previewLabel = getPreviewLabel(record);
-              const previewSub = getPreviewSub(record);
-              const category = getCategoryValue(record);
-              const status = getStatusValue(record);
-              const price = getPriceValue(record);
-              const lastUpdated = getLastUpdatedValue(record);
-              const jsonUrl = "/admin/product?row_id=" + encodeURIComponent(record.row_id || "");
+            const imageUrl = getImageUrl(record);
+            const name = getName(record);
+            const category = getCategory(record);
+            const status = getStatus(record);
+            const price = getPrice(record);
+            const rowId = getRowId(record);
+            const lastUpdated = getLastUpdated(record);
+            const jsonUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
 
-              const previewHtml = previewUrl
-                ? `<img class="thumb" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(previewLabel)}" onerror="this.outerHTML='&lt;div class=&quot;thumb-placeholder&quot;&gt;No image&lt;/div&gt;'" />`
+            const imageHtml = imageUrl
+              ? `<img class="detail-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.style.display='none'" />`
+              : "";
+
+            panel.innerHTML = `
+              ${imageHtml}
+              <div class="detail-grid">
+                <div class="detail-label">Name</div>
+                <div class="detail-value">${escapeHtml(name)}</div>
+
+                <div class="detail-label">Category</div>
+                <div class="detail-value">${escapeHtml(category)}</div>
+
+                <div class="detail-label">Status</div>
+                <div class="detail-value"><span class="${getStatusClass(status)}">${escapeHtml(status)}</span></div>
+
+                <div class="detail-label">Price</div>
+                <div class="detail-value">${escapeHtml(price)}</div>
+
+                <div class="detail-label">Row ID</div>
+                <div class="detail-value">${escapeHtml(rowId)}</div>
+
+                <div class="detail-label">Last Updated</div>
+                <div class="detail-value">${escapeHtml(lastUpdated)}</div>
+              </div>
+
+              <div class="detail-actions">
+                <a class="json-link" href="${escapeHtml(jsonUrl)}" target="_blank">View JSON</a>
+              </div>
+            `;
+          }
+
+          function selectRow(rowId) {
+            selectedRowId = rowId || "";
+
+            const selectedRecord = registryRecords.find((item) => (item.row_id || "") === selectedRowId) || null;
+            renderDetails(selectedRecord);
+
+            document.querySelectorAll("#registryBody tr[data-row-id]").forEach((row) => {
+              if (row.getAttribute("data-row-id") === selectedRowId) {
+                row.classList.add("is-selected");
+              } else {
+                row.classList.remove("is-selected");
+              }
+            });
+          }
+
+          function renderRows(records) {
+            registryRecords = Array.isArray(records) ? records : [];
+            const body = document.getElementById("registryBody");
+
+            if (!registryRecords.length) {
+              renderEmpty("No records found");
+              renderDetails(null);
+              selectedRowId = "";
+              return;
+            }
+
+            body.innerHTML = registryRecords.map((record) => {
+              const imageUrl = getImageUrl(record);
+              const name = getName(record);
+              const category = getCategory(record);
+              const status = getStatus(record);
+              const price = getPrice(record);
+              const rowId = getRowId(record);
+
+              const imageHtml = imageUrl
+                ? `<img class="thumb" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.outerHTML='&lt;div class=&quot;thumb-placeholder&quot;&gt;No image&lt;/div&gt;'" />`
                 : `<div class="thumb-placeholder">No image</div>`;
 
-              const retryDisabled = record.row_id ? "" : "disabled";
-              const deleteDisabled = record.row_id ? "" : "disabled";
-              const jsonDisabled = record.row_id ? "" : "aria-disabled=\\"true\\"";
-
               return `
-                <tr>
-                  <td class="num">${escapeHtml(rowId)}</td>
-                  <td>
-                    <div class="cell-preview">
-                      ${previewHtml}
-                      <div class="preview-text">
-                        <div class="preview-title">${escapeHtml(previewLabel)}</div>
-                        <div class="preview-sub">${escapeHtml(previewSub)}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>${escapeHtml(category)}</td>
+                <tr data-row-id="${escapeHtml(String(record.row_id || ""))}" onclick="selectRow('${escapeHtml(String(record.row_id || ""))}')">
+                  <td class="image-cell">${imageHtml}</td>
+                  <td class="name-cell"><div class="truncate">${escapeHtml(name)}</div></td>
+                  <td><div class="truncate">${escapeHtml(category)}</div></td>
                   <td><span class="${getStatusClass(status)}">${escapeHtml(status)}</span></td>
                   <td>${escapeHtml(price)}</td>
-                  <td>${escapeHtml(lastUpdated)}</td>
-                  <td>
-                    <div class="actions">
-                      <button type="button" onclick="retryRow('${escapeHtml(String(record.row_id || ""))}')" ${retryDisabled}>Retry</button>
-                      <button type="button" onclick="deleteRow('${escapeHtml(String(record.row_id || ""))}')" ${deleteDisabled}>Delete</button>
-                      <a class="link-button" href="${escapeHtml(jsonUrl)}" target="_blank" ${jsonDisabled}>View JSON</a>
-                    </div>
-                  </td>
+                  <td><div class="truncate">${escapeHtml(rowId)}</div></td>
                 </tr>
               `;
             }).join("");
+
+            const existing = registryRecords.find((item) => (item.row_id || "") === selectedRowId);
+            if (existing) {
+              selectRow(selectedRowId);
+            } else {
+              selectRow(registryRecords[0].row_id || "");
+            }
           }
 
           async function fetchJson(url, options) {
@@ -748,6 +854,7 @@ def admin_ui():
             clearError();
             setStatus("Loading registry...");
             renderEmpty("Loading registry...");
+            renderDetails(null);
 
             try {
               const data = await fetchJson("/admin/overview");
@@ -756,53 +863,18 @@ def admin_ui():
               renderRows(records);
               setStatus(records.length + " records loaded");
             } catch (error) {
+              registryRecords = [];
+              selectedRowId = "";
               renderEmpty("Unable to load registry");
+              renderDetails(null);
               setStatus("Failed to load registry");
-              showError(error.message || "Unknown error");
-            }
-          }
-
-          async function retryRow(rowId) {
-            if (!rowId) return;
-
-            clearError();
-            setStatus("Retrying row " + rowId + "...");
-
-            try {
-              await fetchJson("/retry_row?id=" + encodeURIComponent(rowId), {
-                method: "POST"
-              });
-              await loadRegistry();
-            } catch (error) {
-              setStatus("Failed to retry row");
-              showError(error.message || "Unknown error");
-            }
-          }
-
-          async function deleteRow(rowId) {
-            if (!rowId) return;
-
-            const confirmed = confirm("Delete row " + rowId + "?");
-            if (!confirmed) return;
-
-            clearError();
-            setStatus("Deleting row " + rowId + "...");
-
-            try {
-              await fetchJson("/delete_row?id=" + encodeURIComponent(rowId), {
-                method: "POST"
-              });
-              await loadRegistry();
-            } catch (error) {
-              setStatus("Failed to delete row");
               showError(error.message || "Unknown error");
             }
           }
 
           document.getElementById("refreshBtn").addEventListener("click", loadRegistry);
 
-          window.retryRow = retryRow;
-          window.deleteRow = deleteRow;
+          window.selectRow = selectRow;
 
           loadRegistry();
         </script>
