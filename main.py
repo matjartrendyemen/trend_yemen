@@ -2,6 +2,7 @@ import os
 import tempfile
 import threading
 import uuid
+import json
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -199,6 +200,56 @@ def admin_match_media():
             "row_id": row_id,
             "matched_count": result.get("matched_count", 0),
             "matched_status": result.get("matched_status", "ready")
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route("/admin/select_final_media", methods=["POST"])
+def admin_select_final_media():
+    row_id = request.args.get("id", "").strip()
+    media_url = request.args.get("media_url", "").strip()
+    media_type = request.args.get("media_type", "image").strip() or "image"
+
+    if not row_id:
+        return jsonify({
+            "status": "error",
+            "message": "Missing id"
+        }), 400
+
+    if not media_url:
+        return jsonify({
+            "status": "error",
+            "message": "Missing media_url"
+        }), 400
+
+    records = admin_read_service.get_all_admin_records()
+    record = next((item for item in records if item.get("row_id") == row_id), None)
+
+    if not record:
+        return jsonify({
+            "status": "error",
+            "message": "Row not found"
+        }), 404
+
+    try:
+        sheets.update_media_fields(
+            row_id,
+            {
+                "FinalPrimaryMediaType": media_type,
+                "FinalPrimaryMediaURL": media_url,
+                "FinalMediaStatus": "selected",
+            },
+        )
+
+        return jsonify({
+            "status": "ok",
+            "row_id": row_id,
+            "final_media_url": media_url,
+            "final_media_status": "selected",
         })
     except Exception as e:
         return jsonify({
@@ -426,6 +477,13 @@ def admin_ui():
             background: #d1fae5;
           }
 
+          .action-selected {
+            border-color: #bfdbfe;
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: bold;
+          }
+
           #status {
             margin-bottom: 12px;
             color: #4b5563;
@@ -603,10 +661,6 @@ def admin_ui():
             text-overflow: ellipsis;
           }
 
-          .muted {
-            color: #6b7280;
-          }
-
           .badge {
             display: inline-flex;
             align-items: center;
@@ -726,6 +780,126 @@ def admin_ui():
             gap: 8px;
             margin-top: 16px;
             flex-wrap: wrap;
+          }
+
+          .matched-media-block {
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 1px solid #eef0f2;
+          }
+
+          .matched-media-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+          }
+
+          .matched-media-head h3 {
+            margin: 0;
+            font-size: 15px;
+          }
+
+          .matched-media-head p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 13px;
+          }
+
+          .matched-media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+          }
+
+          .candidate-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #fff;
+            overflow: hidden;
+          }
+
+          .candidate-card.is-final {
+            border-color: #60a5fa;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+          }
+
+          .candidate-preview {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            display: block;
+            background: #f3f4f6;
+            border-bottom: 1px solid #eef0f2;
+          }
+
+          .candidate-preview-placeholder {
+            width: 100%;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f3f4f6;
+            color: #6b7280;
+            font-size: 12px;
+            border-bottom: 1px solid #eef0f2;
+          }
+
+          .candidate-body {
+            padding: 10px;
+          }
+
+          .candidate-rank {
+            font-size: 12px;
+            font-weight: bold;
+            color: #1d4ed8;
+            margin-bottom: 6px;
+          }
+
+          .candidate-label {
+            font-size: 13px;
+            color: #111827;
+            margin-bottom: 6px;
+            word-break: break-word;
+          }
+
+          .candidate-meta {
+            font-size: 12px;
+            color: #6b7280;
+            display: grid;
+            gap: 4px;
+          }
+
+          .candidate-link {
+            margin-top: 8px;
+            display: inline-flex;
+            font-size: 12px;
+            text-decoration: none;
+            color: #065f46;
+          }
+
+          .candidate-link:hover {
+            text-decoration: underline;
+          }
+
+          .candidate-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+
+          .candidate-actions button {
+            padding: 6px 10px;
+            font-size: 12px;
+          }
+
+          .matched-empty {
+            color: #6b7280;
+            font-size: 13px;
+            padding: 6px 0 2px;
           }
 
           @media (max-width: 1100px) {
@@ -848,12 +1022,19 @@ def admin_ui():
             return value;
           }
 
-          function getImageUrl(record) {
+          function getFinalPrimaryMediaUrl(record) {
             return normalizeImageUrl(
+              record.final_primary_media_url ||
+              record.FinalPrimaryMediaURL ||
+              ""
+            );
+          }
+
+          function getImageUrl(record) {
+            return getFinalPrimaryMediaUrl(record) || normalizeImageUrl(
               record.final_image_url ||
               record.source_image_url ||
               record.image_url ||
-              record.final_primary_media_url ||
               ""
             );
           }
@@ -936,6 +1117,41 @@ def admin_ui():
             );
           }
 
+          function getFinalMediaStatus(record) {
+            return (
+              record.final_media_status ||
+              record.FinalMediaStatus ||
+              "not_set"
+            );
+          }
+
+          function parseMatchedMedia(record) {
+            const raw = (
+              record.matched_media_json ||
+              record.MatchedMediaJSON ||
+              ""
+            );
+
+            if (!raw) return [];
+
+            try {
+              const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+              return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+              return [];
+            }
+          }
+
+          function getCandidateUrl(candidate) {
+            return normalizeImageUrl(candidate.url || "");
+          }
+
+          function isFinalCandidate(record, candidate) {
+            const finalUrl = getFinalPrimaryMediaUrl(record);
+            const candidateUrl = getCandidateUrl(candidate);
+            return !!finalUrl && !!candidateUrl && finalUrl === candidateUrl;
+          }
+
           function getStatusClass(status) {
             const normalized = String(status || "").trim().toLowerCase();
 
@@ -985,6 +1201,83 @@ def admin_ui():
             `;
           }
 
+          function renderMatchedMedia(record) {
+            const matchedCandidates = parseMatchedMedia(record);
+            const matchedCount = getMatchedMediaCount(record);
+            const matchedStatus = getMatchedMediaStatus(record);
+
+            if (!matchedCandidates.length) {
+              return `
+                <div class="matched-media-block">
+                  <div class="matched-media-head">
+                    <div>
+                      <h3>Matched Media</h3>
+                      <p>Status: ${escapeHtml(matchedStatus)} · Count: ${escapeHtml(matchedCount)}</p>
+                    </div>
+                  </div>
+                  <div class="matched-empty">No matched media candidates yet.</div>
+                </div>
+              `;
+            }
+
+            const itemsHtml = matchedCandidates.map((candidate, index) => {
+              const rank = candidate.rank || (index + 1);
+              const label = candidate.label || "Candidate";
+              const score = candidate.score !== undefined && candidate.score !== null ? String(candidate.score) : "—";
+              const type = candidate.type || "image";
+              const sourceTag = candidate.source_tag || "unknown";
+              const url = getCandidateUrl(candidate);
+              const selected = isFinalCandidate(record, candidate);
+
+              const previewHtml = url
+                ? `<img class="candidate-preview" src="${escapeHtml(url)}" alt="${escapeHtml(label)}" onerror="this.outerHTML='&lt;div class=&quot;candidate-preview-placeholder&quot;&gt;Preview unavailable&lt;/div&gt;'" />`
+                : `<div class="candidate-preview-placeholder">No preview</div>`;
+
+              const previewLink = url
+                ? `<a class="candidate-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open preview</a>`
+                : ``;
+
+              const selectBtnClass = selected ? "action-selected" : "action-secondary";
+              const selectBtnLabel = selected ? "Selected" : "Select";
+              const selectBtnDisabled = selected ? "disabled" : "";
+
+              return `
+                <div class="candidate-card ${selected ? "is-final" : ""}">
+                  ${previewHtml}
+                  <div class="candidate-body">
+                    <div class="candidate-rank">Rank #${escapeHtml(rank)}</div>
+                    <div class="candidate-label">${escapeHtml(label)}</div>
+                    <div class="candidate-meta">
+                      <div>Score: ${escapeHtml(score)}</div>
+                      <div>Type: ${escapeHtml(type)}</div>
+                      <div>Source: ${escapeHtml(sourceTag)}</div>
+                    </div>
+                    ${previewLink}
+                    <div class="candidate-actions">
+                      <button type="button" class="${selectBtnClass}" ${selectBtnDisabled} onclick="selectFinalMediaAction('${escapeHtml(getRowId(record))}', '${escapeHtml(url)}', '${escapeHtml(type)}', this)">
+                        ${selectBtnLabel}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join("");
+
+            return `
+              <div class="matched-media-block">
+                <div class="matched-media-head">
+                  <div>
+                    <h3>Matched Media</h3>
+                    <p>Status: ${escapeHtml(matchedStatus)} · Count: ${escapeHtml(matchedCount)}</p>
+                  </div>
+                </div>
+                <div class="matched-media-grid">
+                  ${itemsHtml}
+                </div>
+              </div>
+            `;
+          }
+
           function renderDetails(record) {
             const panel = document.getElementById("detailsPanel");
 
@@ -1004,6 +1297,7 @@ def admin_ui():
             const matchedStatus = getMatchedMediaStatus(record);
             const matchedCount = getMatchedMediaCount(record);
             const matchedAt = getMatchedAt(record);
+            const finalMediaStatus = getFinalMediaStatus(record);
 
             const imageHtml = imageUrl
               ? `<img class="detail-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.style.display='none'" />`
@@ -1035,6 +1329,9 @@ def admin_ui():
 
                 <div class="detail-label">Matched At</div>
                 <div class="detail-value">${escapeHtml(matchedAt)}</div>
+
+                <div class="detail-label">Final Media</div>
+                <div class="detail-value">${escapeHtml(finalMediaStatus)}</div>
               </div>
 
               <div class="detail-actions">
@@ -1043,6 +1340,8 @@ def admin_ui():
                 <button type="button" class="action-danger" onclick="deleteRowAction('${escapeHtml(String(rowId))}', this)">Delete</button>
                 <a class="json-link" href="${escapeHtml(jsonUrl)}" target="_blank">View JSON</a>
               </div>
+
+              ${renderMatchedMedia(record)}
             `;
           }
 
@@ -1348,6 +1647,39 @@ def admin_ui():
             }
           }
 
+          async function selectFinalMediaAction(rowId, mediaUrl, mediaType, buttonEl) {
+            if (!rowId || !mediaUrl) return;
+
+            clearError();
+            const buttonState = setButtonBusy(buttonEl, "Selecting...");
+            setStatus("Selecting final media for row " + rowId + "...");
+
+            try {
+              await fetchJson(
+                "/admin/select_final_media?id=" + encodeURIComponent(rowId) +
+                "&media_url=" + encodeURIComponent(mediaUrl) +
+                "&media_type=" + encodeURIComponent(mediaType || "image"),
+                {
+                  method: "POST"
+                }
+              );
+
+              selectedRowId = rowId;
+              await loadRegistry({
+                keepSelection: true,
+                preferredRowId: rowId
+              });
+
+              showFlash("Final media selected for row " + rowId);
+              setStatus("Final media selected");
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Final media selection failed");
+            } finally {
+              restoreButton(buttonEl, buttonState);
+            }
+          }
+
           async function createProductAction(event) {
             event.preventDefault();
 
@@ -1418,6 +1750,7 @@ def admin_ui():
           window.retryRowAction = retryRowAction;
           window.deleteRowAction = deleteRowAction;
           window.matchMediaAction = matchMediaAction;
+          window.selectFinalMediaAction = selectFinalMediaAction;
 
           loadRegistry();
         </script>
