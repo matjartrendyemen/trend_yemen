@@ -268,7 +268,7 @@ def admin_ui():
           }
 
           .page {
-            max-width: 1420px;
+            max-width: 1480px;
             margin: 0 auto;
             padding: 20px;
           }
@@ -299,8 +299,37 @@ def admin_ui():
             align-items: center;
           }
 
+          .toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+          }
+
+          .toolbar input,
+          .toolbar select {
+            height: 38px;
+            padding: 0 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #111827;
+            font-size: 14px;
+          }
+
+          .toolbar input {
+            min-width: 260px;
+            flex: 1 1 260px;
+          }
+
+          .toolbar select {
+            min-width: 170px;
+          }
+
           button,
-          .json-link {
+          .json-link,
+          .action-link {
             border: 1px solid #d1d5db;
             background: #ffffff;
             color: #111827;
@@ -312,8 +341,24 @@ def admin_ui():
           }
 
           button:hover,
-          .json-link:hover {
+          .json-link:hover,
+          .action-link:hover {
             background: #f3f4f6;
+          }
+
+          button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+          }
+
+          .action-danger {
+            color: #b91c1c;
+            border-color: #fecaca;
+            background: #fffafa;
+          }
+
+          .action-danger:hover {
+            background: #fef2f2;
           }
 
           #status {
@@ -337,7 +382,7 @@ def admin_ui():
 
           .layout {
             display: grid;
-            grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.9fr);
+            grid-template-columns: minmax(0, 1.8fr) minmax(320px, 0.9fr);
             gap: 16px;
             align-items: start;
           }
@@ -356,7 +401,7 @@ def admin_ui():
           table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 920px;
+            min-width: 1140px;
           }
 
           thead {
@@ -472,6 +517,19 @@ def admin_ui():
             color: #b91c1c;
           }
 
+          .row-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+          }
+
+          .row-actions button,
+          .row-actions a {
+            padding: 6px 10px;
+            font-size: 12px;
+          }
+
           .empty-state {
             padding: 28px 20px;
             text-align: center;
@@ -555,11 +613,22 @@ def admin_ui():
           <div class="topbar">
             <div>
               <h1>Trend Yemen Admin UI</h1>
-              <p>Registry table with row details panel</p>
+              <p>Registry table with search, filters, details panel, and row actions</p>
             </div>
             <div class="toolbar-actions">
               <button id="refreshBtn" type="button">Refresh</button>
             </div>
+          </div>
+
+          <div class="toolbar">
+            <input id="searchInput" type="text" placeholder="Search by name, row ID, category, status, or price" />
+            <select id="categoryFilter">
+              <option value="__all__">All Categories</option>
+            </select>
+            <select id="statusFilter">
+              <option value="__all__">All Statuses</option>
+            </select>
+            <button id="resetFiltersBtn" type="button">Reset</button>
           </div>
 
           <div id="status">Loading registry...</div>
@@ -577,11 +646,12 @@ def admin_ui():
                       <th>Status</th>
                       <th>Price</th>
                       <th>Row ID</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody id="registryBody">
                     <tr>
-                      <td colspan="6" class="empty-state">Loading registry...</td>
+                      <td colspan="7" class="empty-state">Loading registry...</td>
                     </tr>
                   </tbody>
                 </table>
@@ -602,6 +672,7 @@ def admin_ui():
 
         <script>
           let registryRecords = [];
+          let filteredRecords = [];
           let selectedRowId = "";
 
           function escapeHtml(value) {
@@ -727,7 +798,7 @@ def admin_ui():
             const body = document.getElementById("registryBody");
             body.innerHTML = `
               <tr>
-                <td colspan="6" class="empty-state">${escapeHtml(message)}</td>
+                <td colspan="7" class="empty-state">${escapeHtml(message)}</td>
               </tr>
             `;
           }
@@ -776,15 +847,87 @@ def admin_ui():
               </div>
 
               <div class="detail-actions">
+                <button type="button" onclick="retryRowAction('${escapeHtml(String(rowId))}')">Retry</button>
+                <button type="button" class="action-danger" onclick="deleteRowAction('${escapeHtml(String(rowId))}')">Delete</button>
                 <a class="json-link" href="${escapeHtml(jsonUrl)}" target="_blank">View JSON</a>
               </div>
             `;
           }
 
+          function populateFilters(records) {
+            const categoryFilter = document.getElementById("categoryFilter");
+            const statusFilter = document.getElementById("statusFilter");
+
+            const currentCategory = categoryFilter.value || "__all__";
+            const currentStatus = statusFilter.value || "__all__";
+
+            const categories = Array.from(new Set(
+              (records || [])
+                .map((record) => String(getCategory(record)).trim())
+                .filter((value) => value && value !== "—")
+            )).sort((a, b) => a.localeCompare(b));
+
+            const statuses = Array.from(new Set(
+              (records || [])
+                .map((record) => String(getStatus(record)).trim())
+                .filter((value) => value && value !== "—")
+            )).sort((a, b) => a.localeCompare(b));
+
+            categoryFilter.innerHTML = '<option value="__all__">All Categories</option>' +
+              categories.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+
+            statusFilter.innerHTML = '<option value="__all__">All Statuses</option>' +
+              statuses.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+
+            categoryFilter.value = categories.includes(currentCategory) ? currentCategory : "__all__";
+            statusFilter.value = statuses.includes(currentStatus) ? currentStatus : "__all__";
+          }
+
+          function applyFilters() {
+            const searchValue = document.getElementById("searchInput").value.trim().toLowerCase();
+            const categoryValue = document.getElementById("categoryFilter").value;
+            const statusValue = document.getElementById("statusFilter").value;
+
+            filteredRecords = registryRecords.filter((record) => {
+              const name = String(getName(record)).toLowerCase();
+              const category = String(getCategory(record));
+              const status = String(getStatus(record));
+              const price = String(getPrice(record)).toLowerCase();
+              const rowId = String(getRowId(record)).toLowerCase();
+
+              const matchesSearch = !searchValue || [
+                name,
+                category.toLowerCase(),
+                status.toLowerCase(),
+                price,
+                rowId
+              ].some((value) => value.includes(searchValue));
+
+              const matchesCategory = categoryValue === "__all__" || category === categoryValue;
+              const matchesStatus = statusValue === "__all__" || status === statusValue;
+
+              return matchesSearch && matchesCategory && matchesStatus;
+            });
+
+            renderRows(filteredRecords);
+
+            if (!registryRecords.length) {
+              setStatus("0 records loaded");
+              return;
+            }
+
+            if (!filteredRecords.length) {
+              setStatus("No matching results");
+              return;
+            }
+
+            setStatus(filteredRecords.length + " of " + registryRecords.length + " records shown");
+          }
+
           function selectRow(rowId) {
             selectedRowId = rowId || "";
 
-            const selectedRecord = registryRecords.find((item) => (item.row_id || "") === selectedRowId) || null;
+            const selectedRecord = filteredRecords.find((item) => (item.row_id || "") === selectedRowId) || null;
             renderDetails(selectedRecord);
 
             document.querySelectorAll("#registryBody tr[data-row-id]").forEach((row) => {
@@ -797,23 +940,30 @@ def admin_ui():
           }
 
           function renderRows(records) {
-            registryRecords = Array.isArray(records) ? records : [];
+            filteredRecords = Array.isArray(records) ? records : [];
             const body = document.getElementById("registryBody");
 
-            if (!registryRecords.length) {
-              renderEmpty("No records found");
+            if (!filteredRecords.length) {
+              const hasFilters = (
+                document.getElementById("searchInput").value.trim() ||
+                document.getElementById("categoryFilter").value !== "__all__" ||
+                document.getElementById("statusFilter").value !== "__all__"
+              );
+
+              renderEmpty(hasFilters ? "No matching results" : "No records found");
               renderDetails(null);
               selectedRowId = "";
               return;
             }
 
-            body.innerHTML = registryRecords.map((record) => {
+            body.innerHTML = filteredRecords.map((record) => {
               const imageUrl = getImageUrl(record);
               const name = getName(record);
               const category = getCategory(record);
               const status = getStatus(record);
               const price = getPrice(record);
               const rowId = getRowId(record);
+              const jsonUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
 
               const imageHtml = imageUrl
                 ? `<img class="thumb" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.outerHTML='&lt;div class=&quot;thumb-placeholder&quot;&gt;No image&lt;/div&gt;'" />`
@@ -827,15 +977,22 @@ def admin_ui():
                   <td><span class="${getStatusClass(status)}">${escapeHtml(status)}</span></td>
                   <td>${escapeHtml(price)}</td>
                   <td><div class="truncate">${escapeHtml(rowId)}</div></td>
+                  <td>
+                    <div class="row-actions">
+                      <button type="button" onclick="event.stopPropagation(); retryRowAction('${escapeHtml(String(rowId))}')">Retry</button>
+                      <button type="button" class="action-danger" onclick="event.stopPropagation(); deleteRowAction('${escapeHtml(String(rowId))}')">Delete</button>
+                      <a class="action-link" href="${escapeHtml(jsonUrl)}" target="_blank" onclick="event.stopPropagation()">View JSON</a>
+                    </div>
+                  </td>
                 </tr>
               `;
             }).join("");
 
-            const existing = registryRecords.find((item) => (item.row_id || "") === selectedRowId);
+            const existing = filteredRecords.find((item) => (item.row_id || "") === selectedRowId);
             if (existing) {
               selectRow(selectedRowId);
             } else {
-              selectRow(registryRecords[0].row_id || "");
+              selectRow(filteredRecords[0].row_id || "");
             }
           }
 
@@ -858,12 +1015,13 @@ def admin_ui():
 
             try {
               const data = await fetchJson("/admin/overview");
-              const records = Array.isArray(data) ? data : [];
+              registryRecords = Array.isArray(data) ? data : [];
 
-              renderRows(records);
-              setStatus(records.length + " records loaded");
+              populateFilters(registryRecords);
+              applyFilters();
             } catch (error) {
               registryRecords = [];
+              filteredRecords = [];
               selectedRowId = "";
               renderEmpty("Unable to load registry");
               renderDetails(null);
@@ -872,9 +1030,69 @@ def admin_ui():
             }
           }
 
+          function resetFilters() {
+            document.getElementById("searchInput").value = "";
+            document.getElementById("categoryFilter").value = "__all__";
+            document.getElementById("statusFilter").value = "__all__";
+            applyFilters();
+          }
+
+          async function retryRowAction(rowId) {
+            if (!rowId || rowId === "—") return;
+
+            clearError();
+            setStatus("Retrying row " + rowId + "...");
+
+            try {
+              await fetchJson("/retry_row?id=" + encodeURIComponent(rowId), {
+                method: "POST"
+              });
+              await loadRegistry();
+              selectedRowId = rowId;
+              applyFilters();
+              setStatus("Row " + rowId + " retried");
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Retry failed");
+            }
+          }
+
+          async function deleteRowAction(rowId) {
+            if (!rowId || rowId === "—") return;
+
+            if (!window.confirm("Delete row " + rowId + "?")) {
+              return;
+            }
+
+            clearError();
+            setStatus("Deleting row " + rowId + "...");
+
+            try {
+              await fetchJson("/delete_row?id=" + encodeURIComponent(rowId), {
+                method: "POST"
+              });
+
+              if (selectedRowId === rowId) {
+                selectedRowId = "";
+              }
+
+              await loadRegistry();
+              setStatus("Row " + rowId + " deleted");
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Delete failed");
+            }
+          }
+
           document.getElementById("refreshBtn").addEventListener("click", loadRegistry);
+          document.getElementById("resetFiltersBtn").addEventListener("click", resetFilters);
+          document.getElementById("searchInput").addEventListener("input", applyFilters);
+          document.getElementById("categoryFilter").addEventListener("change", applyFilters);
+          document.getElementById("statusFilter").addEventListener("change", applyFilters);
 
           window.selectRow = selectRow;
+          window.retryRowAction = retryRowAction;
+          window.deleteRowAction = deleteRowAction;
 
           loadRegistry();
         </script>
