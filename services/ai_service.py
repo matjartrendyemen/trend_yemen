@@ -1,5 +1,6 @@
 import random
 import re
+
 from adapters.vision_adapter import SmartVisionAdapter
 
 
@@ -46,7 +47,7 @@ class AIService:
                 "CategoryID": "",
                 "FinalImageURL": image_url,
                 "QualityStatus": "Failed",
-                "ErrorMessage": str(e)[:100],
+                "ErrorMessage": self._build_failure_message(e),
             }
 
     def _extract_product_name(self, text: str) -> str:
@@ -118,3 +119,42 @@ class AIService:
             return "NeedsReview", "Generic product name"
 
         return "Accepted", ""
+
+    def _classify_failure_category(self, error: Exception) -> str:
+        message = str(error or "").strip().lower()
+
+        if any(token in message for token in [
+            "429",
+            "rate limit",
+            "resource_exhausted",
+            "quota",
+            "too many requests",
+        ]):
+            return "rate_limit"
+
+        if any(token in message for token in [
+            "503",
+            "service unavailable",
+            "temporarily unavailable",
+            "backend unavailable",
+            "model is overloaded",
+        ]):
+            return "service_unavailable"
+
+        return "general_failure"
+
+    def _build_failure_message(self, error: Exception) -> str:
+        raw_message = str(error or "").strip()
+        category = self._classify_failure_category(error)
+
+        if category == "rate_limit":
+            prefix = "[downstream_enrichment][rate_limit] Gemini rate limit (429)"
+        elif category == "service_unavailable":
+            prefix = "[downstream_enrichment][service_unavailable] Gemini service unavailable (503)"
+        else:
+            prefix = "[downstream_enrichment][general_failure] Downstream AI enrichment failed"
+
+        if raw_message:
+            return f"{prefix}: {raw_message}"[:300]
+
+        return prefix[:300]
