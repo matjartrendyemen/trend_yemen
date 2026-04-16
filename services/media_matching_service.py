@@ -11,9 +11,19 @@ class MediaMatchingService:
     def _now_iso(self):
         return datetime.now(timezone.utc).isoformat()
 
+    def _clean_str(self, value):
+        return str(value or "").strip()
+
+    def _first_non_empty(self, *values):
+        for value in values:
+            cleaned = self._clean_str(value)
+            if cleaned:
+                return cleaned
+        return ""
+
     def _build_candidates(self, product_name, category_id):
-        name = (product_name or "").strip()
-        category = (category_id or "").strip()
+        name = self._clean_str(product_name)
+        category = self._clean_str(category_id)
 
         base_terms = [term for term in [name, category] if term]
         label_base = " - ".join(base_terms) if base_terms else "Generic Product"
@@ -54,10 +64,17 @@ class MediaMatchingService:
         return safe.strip("-") or "item"
 
     def generate_candidates_for_row(self, row_id, product_name="", category_id=""):
-        candidates = self._build_candidates(product_name, category_id)
+        normalized_row_id = self._clean_str(row_id)
+        if not normalized_row_id:
+            raise ValueError("Missing RowID")
+
+        normalized_product_name = self._clean_str(product_name)
+        normalized_category_id = self._clean_str(category_id)
+
+        candidates = self._build_candidates(normalized_product_name, normalized_category_id)
 
         self.sheets.update_media_fields(
-            row_id,
+            normalized_row_id,
             {
                 "MatchedMediaJSON": json.dumps(candidates, ensure_ascii=False),
                 "MatchedMediaCount": len(candidates),
@@ -67,27 +84,34 @@ class MediaMatchingService:
         )
 
         return {
-            "row_id": row_id,
+            "row_id": normalized_row_id,
             "matched_count": len(candidates),
             "matched_status": "ready" if candidates else "empty",
         }
 
     def generate_candidates_for_product_record(self, record):
-        row_id = str(record.get("RowID") or record.get("row_id") or "").strip()
+        if not isinstance(record, dict):
+            raise ValueError("Invalid record payload")
+
+        row_id = self._first_non_empty(
+            record.get("RowID"),
+            record.get("row_id"),
+        )
         if not row_id:
             raise ValueError("Missing RowID")
 
-        product_name = (
-            record.get("ProductName")
-            or record.get("product_name")
-            or record.get("Name")
-            or ""
+        product_name = self._first_non_empty(
+            record.get("ProductName"),
+            record.get("product_name"),
+            record.get("Name"),
+            record.get("title"),
+            record.get("name"),
         )
-        category_id = (
-            record.get("CategoryID")
-            or record.get("category_id")
-            or record.get("Category")
-            or ""
+        category_id = self._first_non_empty(
+            record.get("CategoryID"),
+            record.get("category_id"),
+            record.get("Category"),
+            record.get("category"),
         )
 
         return self.generate_candidates_for_row(
