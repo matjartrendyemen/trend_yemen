@@ -1,5 +1,7 @@
 import json
 import os
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import gspread
@@ -29,6 +31,11 @@ class SheetsStore:
         "FinalGalleryMediaJSON",
         "FinalMediaStatus",
         "FinalizedAt",
+    ]
+
+    REGISTRATION_REQUIRED_COLUMNS = [
+        "RowID",
+        "ProcessingStartedAt",
     ]
 
     def __init__(self):
@@ -65,7 +72,11 @@ class SheetsStore:
         self.col_map = {name: idx + 1 for idx, name in enumerate(self.headers)}
 
     def _ensure_required_columns(self):
-        expected_columns = self.REQUIRED_RESULT_COLUMNS + self.MEDIA_COLUMNS
+        expected_columns = (
+            self.REQUIRED_RESULT_COLUMNS
+            + self.MEDIA_COLUMNS
+            + self.REGISTRATION_REQUIRED_COLUMNS
+        )
         missing_columns = [
             col for col in expected_columns if col not in self.col_map
         ]
@@ -115,6 +126,9 @@ class SheetsStore:
         self.sheet.update_cell(row_index, col, generated)
         return generated
 
+    def _now_iso(self):
+        return datetime.now(timezone.utc).isoformat()
+
     def get_pending_rows(self):
         rows = self._get_all_records()
         result = []
@@ -134,22 +148,43 @@ class SheetsStore:
         return result
 
     def update_status(self, row_id, status):
+        self._refresh_headers()
+        self._ensure_required_columns()
+        self._refresh_headers()
+
         row_index = self._get_row_index_by_id(row_id)
         if not row_index:
             raise ValueError(f"RowID not found: {row_id}")
 
-        col = self.col_map.get("ProcessingStatus")
-        if not col:
+        status_col = self.col_map.get("ProcessingStatus")
+        if not status_col:
             raise ValueError("ProcessingStatus column not found")
 
-        self.sheet.update_cell(row_index, col, status)
+        normalized_status = str(status or "").strip()
+
+        self.sheet.update_cell(row_index, status_col, normalized_status)
+
+        processing_started_col = self.col_map.get("ProcessingStartedAt")
+        if processing_started_col:
+            if normalized_status == "Processing":
+                self.sheet.update_cell(
+                    row_index,
+                    processing_started_col,
+                    self._now_iso(),
+                )
+            elif normalized_status == "Pending":
+                self.sheet.update_cell(
+                    row_index,
+                    processing_started_col,
+                    "",
+                )
 
     def append_pending_product(self, image_url: str, price: Any):
         self._refresh_headers()
         self._ensure_required_columns()
         self._refresh_headers()
 
-        required_columns = ["ImageURL", "Price", "ProcessingStatus"]
+        required_columns = ["RowID", "ImageURL", "Price", "ProcessingStatus"]
         missing_columns = [col for col in required_columns if col not in self.col_map]
 
         if missing_columns:
@@ -157,29 +192,43 @@ class SheetsStore:
                 f"Required sheet columns missing: {', '.join(missing_columns)}"
             )
 
+        image_url_value = "" if image_url is None else str(image_url).strip()
+        price_value = "" if price is None else str(price).strip()
+
+        if not image_url_value:
+            raise ValueError("image_url is required")
+
+        if not price_value:
+            raise ValueError("price is required")
+
+        row_id = uuid.uuid4().hex
         row_values = ["" for _ in self.headers]
 
-        row_values[self.col_map["ImageURL"] - 1] = "" if image_url is None else str(image_url)
-        row_values[self.col_map["Price"] - 1] = "" if price is None else str(price)
+        row_values[self.col_map["RowID"] - 1] = row_id
+        row_values[self.col_map["ImageURL"] - 1] = image_url_value
+        row_values[self.col_map["Price"] - 1] = price_value
         row_values[self.col_map["ProcessingStatus"] - 1] = "Pending"
 
         if "SeedMediaType" in self.col_map:
-            row_values[self.col_map["SeedMediaType"] - 1] = "image" if image_url else ""
+            row_values[self.col_map["SeedMediaType"] - 1] = "image"
 
         if "SeedMediaURL" in self.col_map:
-            row_values[self.col_map["SeedMediaURL"] - 1] = "" if image_url is None else str(image_url)
+            row_values[self.col_map["SeedMediaURL"] - 1] = image_url_value
 
         if "SeedMediaStatus" in self.col_map:
-            row_values[self.col_map["SeedMediaStatus"] - 1] = "temporary" if image_url else ""
+            row_values[self.col_map["SeedMediaStatus"] - 1] = "temporary"
 
         self.sheet.append_row(row_values, value_input_option="USER_ENTERED")
 
-        row_index = len(self.sheet.get_all_values())
-        row_id = self._ensure_row_id(row_index, {})
+        self._refresh_headers()
+        row_index = self._get_row_index_by_id(row_id)
+
+        if not row_index:
+            raise RuntimeError("Failed to verify appended row in sheet")
 
         return {
             "row_id": row_id,
-            "image_url": str(image_url),
+            "image_url": image_url_value,
             "status": "Pending",
         }
 
