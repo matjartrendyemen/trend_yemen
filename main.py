@@ -2,10 +2,10 @@ import os
 import tempfile
 import threading
 import uuid
-import json
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, url_for
 
 from core.orchestrator import MasterOrchestrator
 from storage.sheets_store import SheetsStore
@@ -25,6 +25,90 @@ _orchestrator_started = threading.Event()
 
 SEED_IMAGE_DIR = Path(tempfile.gettempdir()) / "trend_yemen_seed_images"
 SEED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_ADMIN_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+
+def _ensure_seed_image_dir():
+    SEED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    return SEED_IMAGE_DIR
+
+
+def _build_seed_image_url(filename):
+    return url_for("admin_seed_image", filename=filename, _external=True)
+
+
+def _error_response(message, status_code=400):
+    return jsonify({
+        "status": "error",
+        "message": message
+    }), status_code
+
+
+def _has_allowed_admin_image_extension(filename):
+    return Path(str(filename or "")).suffix.lower() in ALLOWED_ADMIN_IMAGE_EXTENSIONS
+
+
+def _normalize_admin_price(price_raw):
+    normalized = str(price_raw or "").replace(",", "").strip()
+
+    if not normalized:
+        raise ValueError("Missing price")
+
+    value = Decimal(normalized)
+
+    if value <= 0:
+        raise ValueError("Price must be greater than zero")
+
+    if value == value.to_integral():
+        return str(value.quantize(Decimal("1")))
+
+    normalized_value = format(value.normalize(), "f")
+    if "." in normalized_value:
+        normalized_value = normalized_value.rstrip("0").rstrip(".")
+
+    return normalized_value
+
+
+def _remove_seed_image(file_path):
+    try:
+        if file_path and file_path.exists():
+            file_path.unlink()
+    except Exception:
+        pass
+
+
+def _save_seed_image_locally(image_bytes, original_filename):
+    if not image_bytes:
+        raise ValueError("Empty image file")
+
+    seed_dir = _ensure_seed_image_dir()
+    extension = Path(str(original_filename or "")).suffix.lower() or ".jpg"
+    filename = f"{uuid.uuid4().hex}{extension}"
+
+    temp_path = seed_dir / f".{filename}.tmp"
+    final_path = seed_dir / filename
+
+    try:
+        with open(temp_path, "wb") as f:
+            f.write(image_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(temp_path, final_path)
+
+        if not final_path.exists() or not final_path.is_file():
+            raise RuntimeError("Seed image file was not saved")
+
+        if final_path.stat().st_size <= 0:
+            raise RuntimeError("Seed image file is empty after save")
+
+        return filename, final_path
+
+    except Exception:
+        _remove_seed_image(temp_path)
+        _remove_seed_image(final_path)
+        raise
 
 
 @app.route("/")
@@ -95,6 +179,46 @@ def retry_row():
     if not row_id:
         return jsonify({"status": "error", "message": "Missing id"}), 400
 
+    records = admin_read_service.get_all_admin_records()
+    record = next((item for item in records if item.get("row_id") == row_id), None)
+
+    if not record:
+        return jsonify({"status": "error", "message": "Row not found"}), 404
+
+    processing_status = str(record.get("processing_status", "")).strip()
+    enrichment_status = str(record.get("enrichment_status", "")).strip()
+    retryable = bool(record.get("retryable"))
+
+    if processing_status == "Pending":
+        return jsonify({
+            "status": "error",
+            "message": "Retry is not allowed while row is Pending"
+        }), 409
+
+    if processing_status == "Processing":
+        return jsonify({
+            "status": "error",
+            "message": "Retry is not allowed while row is Processing"
+        }), 409
+
+    if processing_status == "Completed":
+        return jsonify({
+            "status": "error",
+            "message": "Retry is not allowed for Completed rows"
+        }), 409
+
+    if enrichment_status != "failed":
+        return jsonify({
+            "status": "error",
+            "message": "Retry is allowed only for failed enrichment rows"
+        }), 409
+
+    if not retryable:
+        return jsonify({
+            "status": "error",
+            "message": "Retry is not allowed for this failure classification"
+        }), 409
+
     row_index = sheets._get_row_index_by_id(row_id)
     if not row_index:
         return jsonify({"status": "error", "message": "Row not found"}), 404
@@ -105,6 +229,73 @@ def retry_row():
     return jsonify({
         "status": "ok",
         "row_id": row_id
+    })
+
+
+@app.route("/admin/resolve_stuck", methods=["POST"])
+def admin_resolve_stuck():
+    row_id = request.args.get("id", "").strip()
+    action = request.args.get("action", "").strip().lower()
+
+    if not row_id:
+        return jsonify({"status": "error", "message": "Missing id"}), 400
+
+    if action not in {"reset_to_pending", "release_to_failed"}:
+        return jsonify({"status": "error", "message": "Invalid action"}), 400
+
+    records = admin_read_service.get_all_admin_records()
+    record = next((item for item in records if item.get("row_id") == row_id), None)
+
+    if not record:
+        return jsonify({"status": "error", "message": "Row not found"}), 404
+
+    action_eligibility = record.get("action_eligibility") or {}
+
+    if action == "reset_to_pending" and not action_eligibility.get("reset_to_pending"):
+        return jsonify({
+            "status": "error",
+            "message": "Reset to Pending is allowed only for stuck eligible rows"
+        }), 409
+
+    if action == "release_to_failed" and not action_eligibility.get("release_to_failed"):
+        return jsonify({
+            "status": "error",
+            "message": "Release to Failed is allowed only for stuck eligible rows"
+        }), 409
+
+    row_index = sheets._get_row_index_by_id(row_id)
+    if not row_index:
+        return jsonify({"status": "error", "message": "Row not found"}), 404
+
+    status_col = sheets.col_map.get("ProcessingStatus")
+    if not status_col:
+        return jsonify({"status": "error", "message": "ProcessingStatus column not found"}), 400
+
+    if action == "reset_to_pending":
+        sheets.sheet.update_cell(row_index, status_col, "Pending")
+
+        return jsonify({
+            "status": "ok",
+            "row_id": row_id,
+            "resolved_status": "Pending",
+            "action": action,
+        })
+
+    sheets.sheet.update_cell(row_index, status_col, "Failed")
+
+    error_col = sheets.col_map.get("ErrorMessage")
+    if error_col:
+        sheets.sheet.update_cell(
+            row_index,
+            error_col,
+            "Manually released from stuck Processing via Admin."
+        )
+
+    return jsonify({
+        "status": "ok",
+        "row_id": row_id,
+        "resolved_status": "Failed",
+        "action": action,
     })
 
 
@@ -190,17 +381,18 @@ def admin_match_media():
         }), 404
 
     try:
-        result = media_matching_service.generate_candidates_for_row(
-            row_id=row_id,
-            product_name=record.get("product_name", "") or record.get("title", "") or record.get("name", ""),
-            category_id=record.get("category_id", "") or record.get("category", ""),
-        )
+        result = media_matching_service.generate_candidates_for_product_record(record)
         return jsonify({
             "status": "ok",
-            "row_id": row_id,
+            "row_id": result.get("row_id", row_id),
             "matched_count": result.get("matched_count", 0),
             "matched_status": result.get("matched_status", "ready")
         })
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 400
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -260,66 +452,68 @@ def admin_select_final_media():
 
 @app.route("/admin/seed_image/<path:filename>")
 def admin_seed_image(filename):
+    _ensure_seed_image_dir()
+
+    file_path = SEED_IMAGE_DIR / filename
+
+    if not file_path.exists() or not file_path.is_file():
+        return _error_response("Seed image not found", 404)
+
+    if file_path.stat().st_size <= 0:
+        return _error_response("Seed image file is empty", 404)
+
     return send_from_directory(SEED_IMAGE_DIR, filename)
 
 
 @app.route("/admin/create_product", methods=["POST"])
 def admin_create_product():
+    content_type = str(request.content_type or "").lower()
+    if "multipart/form-data" not in content_type:
+        return _error_response("Content-Type must be multipart/form-data")
+
     image = request.files.get("image")
-    price_raw = request.form.get("price", "").strip()
+    price_raw = request.form.get("price", "")
 
-    if image is None or not image.filename:
-        return jsonify({
-            "status": "error",
-            "message": "Missing image file"
-        }), 400
+    if image is None or not str(image.filename or "").strip():
+        return _error_response("Missing image file")
 
-    if not str(image.mimetype or "").startswith("image/"):
-        return jsonify({
-            "status": "error",
-            "message": "Uploaded file must be an image"
-        }), 400
+    image_filename = str(image.filename).strip()
+    image_mimetype = str(image.mimetype or "").strip().lower()
 
-    if not price_raw:
-        return jsonify({
-            "status": "error",
-            "message": "Missing price"
-        }), 400
+    if not _has_allowed_admin_image_extension(image_filename):
+        return _error_response(
+            "Unsupported image file type. Allowed: JPG, JPEG, PNG, WEBP, GIF, BMP"
+        )
+
+    if image_mimetype and not image_mimetype.startswith("image/"):
+        return _error_response("Uploaded file must be an image")
+
+    if not str(price_raw or "").strip():
+        return _error_response("Missing price")
 
     try:
-        normalized_price = price_raw.replace(",", "").strip()
-        price_number = float(normalized_price)
+        price_value = _normalize_admin_price(price_raw)
+    except (InvalidOperation, ValueError):
+        return _error_response("Invalid price. Enter a positive number")
 
-        if price_number <= 0:
-            raise ValueError()
-
-        price_value = (
-            str(int(price_number))
-            if price_number.is_integer()
-            else str(price_number)
-        )
-    except Exception:
-        return jsonify({
-            "status": "error",
-            "message": "Invalid price"
-        }), 400
+    file_path = None
 
     try:
         image_bytes = image.read()
-        if not image_bytes:
-            return jsonify({
-                "status": "error",
-                "message": "Empty image file"
-            }), 400
+        filename, file_path = _save_seed_image_locally(image_bytes, image_filename)
 
-        extension = Path(image.filename).suffix or ".jpg"
-        filename = f"{uuid.uuid4().hex}{extension}"
-        file_path = SEED_IMAGE_DIR / filename
+        if not file_path.exists() or not file_path.is_file():
+            return _error_response("Failed to save seed image locally", 500)
 
-        with open(file_path, "wb") as f:
-            f.write(image_bytes)
+        if file_path.stat().st_size <= 0:
+            _remove_seed_image(file_path)
+            return _error_response("Failed to save seed image locally", 500)
 
-        image_url = request.host_url.rstrip("/") + f"/admin/seed_image/{filename}"
+        image_url = _build_seed_image_url(filename)
+
+        if not image_url:
+            _remove_seed_image(file_path)
+            return _error_response("Failed to build local seed image URL", 500)
 
         created = sheets.append_pending_product(
             image_url=image_url,
@@ -332,11 +526,12 @@ def admin_create_product():
             "status": created["status"],
         }), 201
 
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+    except ValueError as e:
+        _remove_seed_image(file_path)
+        return _error_response(str(e), 400)
+    except Exception:
+        _remove_seed_image(file_path)
+        return _error_response("Failed to create product", 500)
 
 
 @app.route("/admin/ui")
@@ -698,6 +893,18 @@ def admin_ui():
             color: #b91c1c;
           }
 
+          .badge-retryable-failed {
+            background: #fff7db;
+            border-color: #f3dfab;
+            color: #8a6300;
+          }
+
+          .badge-stuck-processing {
+            background: #fff7db;
+            border-color: #f3dfab;
+            color: #8a6300;
+          }
+
           .row-actions {
             display: flex;
             gap: 8px;
@@ -709,6 +916,17 @@ def admin_ui():
           .row-actions a {
             padding: 6px 10px;
             font-size: 12px;
+          }
+
+          .row-meta {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.4;
+          }
+
+          .row-meta-warning {
+            color: #8a6300;
           }
 
           .empty-state {
@@ -928,9 +1146,28 @@ def admin_ui():
                 <p>Seed image stays temporary. Existing flow remains unchanged.</p>
               </div>
             </div>
-            <form id="createProductForm" class="create-form">
-              <input id="createImageInput" name="image" type="file" accept="image/*" required />
-              <input id="createPriceInput" name="price" type="text" placeholder="Price (YER)" required />
+            <form
+              id="createProductForm"
+              class="create-form"
+              action="/admin/create_product"
+              method="post"
+              enctype="multipart/form-data"
+            >
+              <input
+                id="createImageInput"
+                name="image"
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/*"
+                required
+              />
+              <input
+                id="createPriceInput"
+                name="price"
+                type="text"
+                inputmode="decimal"
+                placeholder="Price (YER)"
+                required
+              />
               <button id="createBtn" type="submit" class="action-primary">Create Product</button>
             </form>
             <div class="create-hint">Uses the existing <code>/admin/create_product</code> endpoint.</div>
@@ -1056,11 +1293,18 @@ def admin_ui():
             );
           }
 
-          function getStatus(record) {
+          function getProcessingStatus(record) {
             return (
               record.processing_status ||
               record.status ||
               "—"
+            );
+          }
+
+          function getStatus(record) {
+            return (
+              record.operational_status ||
+              getProcessingStatus(record)
             );
           }
 
@@ -1091,6 +1335,66 @@ def admin_ui():
               record.created_at ||
               "—"
             );
+          }
+
+          function getOperationalStatus(record) {
+            return record.operational_status || getStatus(record);
+          }
+
+          function getRetryabilityStatus(record) {
+            return record.retryability_status || "not_applicable";
+          }
+
+          function getRetryGuidance(record) {
+            return record.retry_guidance || "—";
+          }
+
+          function getFailureStage(record) {
+            return record.failure_stage || "—";
+          }
+
+          function getFailureCategory(record) {
+            return record.failure_category || "—";
+          }
+
+          function getFailureSummary(record) {
+            return record.failure_summary || "—";
+          }
+
+          function getErrorMessage(record) {
+            return record.error_message || "—";
+          }
+
+          function isRetryRecommended(record) {
+            return Boolean(record.retry_recommended);
+          }
+
+          function isStuckProcessing(record) {
+            return Boolean(record.is_stuck_processing);
+          }
+
+          function getProcessingAge(record) {
+            return record.processing_age || "";
+          }
+
+          function getStuckReason(record) {
+            return record.stuck_reason || "";
+          }
+
+          function isStuckActionEligible(record) {
+            return Boolean(record.stuck_action_eligible);
+          }
+
+          function getActionEligibility(record) {
+            return record.action_eligibility || {};
+          }
+
+          function canResetToPending(record) {
+            return Boolean(getActionEligibility(record).reset_to_pending);
+          }
+
+          function canReleaseToFailed(record) {
+            return Boolean(getActionEligibility(record).release_to_failed);
           }
 
           function getMatchedMediaStatus(record) {
@@ -1153,8 +1457,12 @@ def admin_ui():
           }
 
           function getStatusClass(status) {
-            const normalized = String(status || "").trim().toLowerCase();
+            const normalized = String(status || "")
+              .trim()
+              .toLowerCase()
+              .replace(/[\\s_-]+/g, "");
 
+            if (normalized === "retryablefailed") return "badge badge-retryable-failed";
             if (normalized === "pending") return "badge badge-pending";
             if (normalized === "processing") return "badge badge-processing";
             if (normalized === "completed") return "badge badge-completed";
@@ -1190,6 +1498,41 @@ def admin_ui():
               flashEl.style.display = "none";
               flashEl.textContent = "";
             }, 2600);
+          }
+
+          const ALLOWED_CREATE_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
+
+          function hasAllowedCreateImageExtension(fileName) {
+            const value = String(fileName || "").toLowerCase();
+            return ALLOWED_CREATE_IMAGE_EXTENSIONS.some((ext) => value.endsWith(ext));
+          }
+
+          function validateCreateProductInputs(imageInput, priceInput) {
+            const file = imageInput.files && imageInput.files[0];
+
+            if (!file) {
+              return "Please choose an image";
+            }
+
+            const hasValidExtension = hasAllowedCreateImageExtension(file.name);
+            const hasValidMimeType = !file.type || file.type.startsWith("image/");
+
+            if (!hasValidExtension || !hasValidMimeType) {
+              return "Please choose a valid image file (JPG, JPEG, PNG, WEBP, GIF, or BMP)";
+            }
+
+            const normalizedPrice = String(priceInput.value || "").replace(/,/g, "").trim();
+            const priceNumber = Number(normalizedPrice);
+
+            if (!normalizedPrice) {
+              return "Please enter a price";
+            }
+
+            if (!Number.isFinite(priceNumber) || priceNumber <= 0) {
+              return "Please enter a valid positive price";
+            }
+
+            return "";
           }
 
           function renderEmpty(message) {
@@ -1290,6 +1633,7 @@ def admin_ui():
             const name = getName(record);
             const category = getCategory(record);
             const status = getStatus(record);
+            const processingStatus = getProcessingStatus(record);
             const price = getPrice(record);
             const rowId = getRowId(record);
             const lastUpdated = getLastUpdated(record);
@@ -1298,6 +1642,22 @@ def admin_ui():
             const matchedCount = getMatchedMediaCount(record);
             const matchedAt = getMatchedAt(record);
             const finalMediaStatus = getFinalMediaStatus(record);
+
+            const retryabilityStatus = getRetryabilityStatus(record);
+            const retryGuidance = getRetryGuidance(record);
+            const failureStage = getFailureStage(record);
+            const failureCategory = getFailureCategory(record);
+            const failureSummary = getFailureSummary(record);
+            const errorMessage = getErrorMessage(record);
+            const retryRecommended = isRetryRecommended(record) ? "Yes" : "No";
+
+            const isStuck = isStuckProcessing(record);
+            const processingAge = getProcessingAge(record);
+            const stuckReason = getStuckReason(record);
+            const stuckActionEligible = isStuckActionEligible(record) ? "Yes" : "No";
+
+            const showResetToPending = canResetToPending(record);
+            const showReleaseToFailed = canReleaseToFailed(record);
 
             const imageHtml = imageUrl
               ? `<img class="detail-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.style.display='none'" />`
@@ -1312,8 +1672,11 @@ def admin_ui():
                 <div class="detail-label">Category</div>
                 <div class="detail-value">${escapeHtml(category)}</div>
 
-                <div class="detail-label">Status</div>
+                <div class="detail-label">Operational Status</div>
                 <div class="detail-value"><span class="${getStatusClass(status)}">${escapeHtml(status)}</span></div>
+
+                <div class="detail-label">Processing Status</div>
+                <div class="detail-value"><span class="${getStatusClass(processingStatus)}">${escapeHtml(processingStatus)}</span></div>
 
                 <div class="detail-label">Price</div>
                 <div class="detail-value">${escapeHtml(price)}</div>
@@ -1323,6 +1686,39 @@ def admin_ui():
 
                 <div class="detail-label">Last Updated</div>
                 <div class="detail-value">${escapeHtml(lastUpdated)}</div>
+
+                <div class="detail-label">Processing Age</div>
+                <div class="detail-value">${escapeHtml(processingAge || "—")}</div>
+
+                <div class="detail-label">Stuck Processing</div>
+                <div class="detail-value">${escapeHtml(isStuck ? "Yes" : "No")}</div>
+
+                <div class="detail-label">Stuck Reason</div>
+                <div class="detail-value">${escapeHtml(stuckReason || "—")}</div>
+
+                <div class="detail-label">Stuck Action Eligible</div>
+                <div class="detail-value">${escapeHtml(stuckActionEligible)}</div>
+
+                <div class="detail-label">Retryability</div>
+                <div class="detail-value">${escapeHtml(retryabilityStatus)}</div>
+
+                <div class="detail-label">Retry Recommended</div>
+                <div class="detail-value">${escapeHtml(retryRecommended)}</div>
+
+                <div class="detail-label">Retry Guidance</div>
+                <div class="detail-value">${escapeHtml(retryGuidance)}</div>
+
+                <div class="detail-label">Failure Stage</div>
+                <div class="detail-value">${escapeHtml(failureStage)}</div>
+
+                <div class="detail-label">Failure Category</div>
+                <div class="detail-value">${escapeHtml(failureCategory)}</div>
+
+                <div class="detail-label">Failure Summary</div>
+                <div class="detail-value">${escapeHtml(failureSummary)}</div>
+
+                <div class="detail-label">Error Message</div>
+                <div class="detail-value">${escapeHtml(errorMessage)}</div>
 
                 <div class="detail-label">Matched Media</div>
                 <div class="detail-value">${escapeHtml(matchedStatus)} (${escapeHtml(matchedCount)})</div>
@@ -1337,6 +1733,8 @@ def admin_ui():
               <div class="detail-actions">
                 <button type="button" class="action-secondary" onclick="matchMediaAction('${escapeHtml(String(rowId))}', this)">Match Media</button>
                 <button type="button" onclick="retryRowAction('${escapeHtml(String(rowId))}', this)">Retry</button>
+                ${showResetToPending ? `<button type="button" onclick="resolveStuckAction('${escapeHtml(String(rowId))}', 'reset_to_pending', this)">Reset to Pending</button>` : ``}
+                ${showReleaseToFailed ? `<button type="button" class="action-danger" onclick="resolveStuckAction('${escapeHtml(String(rowId))}', 'release_to_failed', this)">Release to Failed</button>` : ``}
                 <button type="button" class="action-danger" onclick="deleteRowAction('${escapeHtml(String(rowId))}', this)">Delete</button>
                 <a class="json-link" href="${escapeHtml(jsonUrl)}" target="_blank">View JSON</a>
               </div>
@@ -1460,12 +1858,33 @@ def admin_ui():
                 ? `<img class="thumb" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.outerHTML='&lt;div class=&quot;thumb-placeholder&quot;&gt;No image&lt;/div&gt;'" />`
                 : `<div class="thumb-placeholder">No image</div>`;
 
+              const statusMetaHtml = isStuckProcessing(record)
+                ? `
+                  <div class="row-meta">
+                    <span class="badge badge-stuck-processing">Stuck</span>
+                    <span>${escapeHtml(getProcessingAge(record) || "—")}</span>
+                  </div>
+                  <div class="row-meta row-meta-warning">${escapeHtml(getStuckReason(record) || "")}</div>
+                `
+                : (
+                    getStuckReason(record)
+                      ? `<div class="row-meta row-meta-warning">${escapeHtml(getStuckReason(record))}</div>`
+                      : (
+                          getProcessingAge(record)
+                            ? `<div class="row-meta">Age: ${escapeHtml(getProcessingAge(record))}</div>`
+                            : ``
+                        )
+                  );
+
               return `
                 <tr data-row-id="${escapeHtml(String(record.row_id || ""))}" onclick="selectRow('${escapeHtml(String(record.row_id || ""))}')">
                   <td class="image-cell">${imageHtml}</td>
                   <td class="name-cell"><div class="truncate">${escapeHtml(name)}</div></td>
                   <td><div class="truncate">${escapeHtml(category)}</div></td>
-                  <td><span class="${getStatusClass(status)}">${escapeHtml(status)}</span></td>
+                  <td>
+                    <span class="${getStatusClass(status)}">${escapeHtml(status)}</span>
+                    ${statusMetaHtml}
+                  </td>
                   <td>${escapeHtml(price)}</td>
                   <td><div class="truncate">${escapeHtml(rowId)}</div></td>
                   <td>
@@ -1588,6 +2007,43 @@ def admin_ui():
             }
           }
 
+          async function resolveStuckAction(rowId, action, buttonEl) {
+            if (!rowId || rowId === "—" || !action) return;
+
+            const actionLabel = action === "reset_to_pending" ? "Resetting..." : "Releasing...";
+            const successLabel = action === "reset_to_pending"
+              ? "Row " + rowId + " reset to Pending"
+              : "Row " + rowId + " released to Failed";
+
+            clearError();
+            const buttonState = setButtonBusy(buttonEl, actionLabel);
+            setStatus(successLabel + "...");
+
+            try {
+              await fetchJson(
+                "/admin/resolve_stuck?id=" + encodeURIComponent(rowId) +
+                "&action=" + encodeURIComponent(action),
+                {
+                  method: "POST"
+                }
+              );
+
+              selectedRowId = rowId;
+              await loadRegistry({
+                keepSelection: true,
+                preferredRowId: rowId
+              });
+
+              showFlash(successLabel);
+              setStatus(successLabel);
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Stuck resolve failed");
+            } finally {
+              restoreButton(buttonEl, buttonState);
+            }
+          }
+
           async function deleteRowAction(rowId, buttonEl) {
             if (!rowId || rowId === "—") return;
 
@@ -1690,13 +2146,10 @@ def admin_ui():
             const priceInput = document.getElementById("createPriceInput");
             const createBtn = document.getElementById("createBtn");
 
-            if (!imageInput.files || !imageInput.files.length) {
-              showError("Please choose an image");
-              return;
-            }
-
-            if (!priceInput.value.trim()) {
-              showError("Please enter a price");
+            const validationError = validateCreateProductInputs(imageInput, priceInput);
+            if (validationError) {
+              showError(validationError);
+              setStatus("Create product failed");
               return;
             }
 
@@ -1705,6 +2158,7 @@ def admin_ui():
 
             try {
               const formData = new FormData(form);
+              formData.set("price", priceInput.value.trim());
 
               const response = await fetch("/admin/create_product", {
                 method: "POST",
@@ -1748,6 +2202,7 @@ def admin_ui():
 
           window.selectRow = selectRow;
           window.retryRowAction = retryRowAction;
+          window.resolveStuckAction = resolveStuckAction;
           window.deleteRowAction = deleteRowAction;
           window.matchMediaAction = matchMediaAction;
           window.selectFinalMediaAction = selectFinalMediaAction;
