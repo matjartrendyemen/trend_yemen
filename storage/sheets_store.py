@@ -33,6 +33,11 @@ class SheetsStore:
         "FinalizedAt",
     ]
 
+    MEDIA_JSON_COLUMNS = {
+        "MatchedMediaJSON",
+        "FinalGalleryMediaJSON",
+    }
+
     REGISTRATION_REQUIRED_COLUMNS = [
         "RowID",
         "ProcessingStartedAt",
@@ -128,6 +133,15 @@ class SheetsStore:
 
     def _now_iso(self):
         return datetime.now(timezone.utc).isoformat()
+
+    def _normalize_media_field_value(self, key, value):
+        if key in self.MEDIA_JSON_COLUMNS and isinstance(value, (list, dict)):
+            return json.dumps(value, ensure_ascii=False)
+
+        if value is None:
+            return ""
+
+        return str(value)
 
     def get_pending_rows(self):
         rows = self._get_all_records()
@@ -274,8 +288,10 @@ class SheetsStore:
             if not col or key not in self.MEDIA_COLUMNS:
                 continue
 
+            normalized_value = self._normalize_media_field_value(key, value)
+
             self.sheet.update_cell(
                 row_index,
                 col,
-                "" if value is None else str(value)
+                normalized_value
             )
