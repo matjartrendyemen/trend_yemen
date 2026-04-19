@@ -12,6 +12,12 @@ class AdminReadService:
     """
 
     STUCK_PROCESSING_THRESHOLD_SECONDS = 15 * 60
+    MEDIA_ROLE_PRIORITY = {
+        "original": 1,
+        "video": 2,
+        "additional": 3,
+        "lifestyle": 4,
+    }
 
     def __init__(self, sheets_store: SheetsStore | None = None):
         self.sheets = sheets_store or SheetsStore()
@@ -25,6 +31,7 @@ class AdminReadService:
 
     def _build_admin_record(self, row: Dict[str, Any]) -> Dict[str, Any]:
         base = self._build_base_record(row)
+        media_contract = self._build_media_contract(row, base)
         failure_visibility = self._build_failure_visibility(base)
         stuck_visibility = self._build_stuck_processing_visibility(row, base)
         smart_inputs = build_smart_encoding_inputs(row)
@@ -38,6 +45,7 @@ class AdminReadService:
 
         return {
             **base,
+            **media_contract,
             **failure_visibility,
             **stuck_visibility,
             "action_eligibility": action_eligibility,
@@ -86,6 +94,154 @@ class AdminReadService:
             "updated_at": updated_at,
             "last_updated": last_updated,
         }
+
+    def _build_media_contract(self, row: Dict[str, Any], base_record: Dict[str, Any]) -> Dict[str, Any]:
+        matched_candidates = self._normalize_matched_media_candidates(
+            self._parse_json_list(row.get("MatchedMediaJSON"))
+        )
+        matched_media_count = self._safe_int(row.get("MatchedMediaCount"))
+        if matched_media_count <= 0 and matched_candidates:
+            matched_media_count = len(matched_candidates)
+
+        matched_media_status = self._clean(row.get("MatchedMediaStatus"))
+        if not matched_media_status:
+            matched_media_status = "ready" if matched_candidates else "not_started"
+
+        final_gallery_media = self._parse_json_value(row.get("FinalGalleryMediaJSON"))
+
+        final_primary_media_url = self._clean(row.get("FinalPrimaryMediaURL"))
+        final_primary_media_type = self._clean(row.get("FinalPrimaryMediaType"))
+        final_media_status = self._clean(row.get("FinalMediaStatus"))
+        matched_at = self._clean(row.get("MatchedAt"))
+
+        return {
+            "matched_media_json": matched_candidates,
+            "MatchedMediaJSON": matched_candidates,
+            "matched_media_count": matched_media_count,
+            "MatchedMediaCount": matched_media_count,
+            "matched_media_status": matched_media_status,
+            "MatchedMediaStatus": matched_media_status,
+            "matched_at": matched_at,
+            "MatchedAt": matched_at,
+            "final_primary_media_url": final_primary_media_url,
+            "FinalPrimaryMediaURL": final_primary_media_url,
+            "final_primary_media_type": final_primary_media_type,
+            "FinalPrimaryMediaType": final_primary_media_type,
+            "final_gallery_media_json": final_gallery_media,
+            "FinalGalleryMediaJSON": final_gallery_media,
+            "final_media_status": final_media_status,
+            "FinalMediaStatus": final_media_status,
+        }
+
+    def _normalize_matched_media_candidates(self, raw_candidates: Any) -> List[Dict[str, Any]]:
+        if not isinstance(raw_candidates, list):
+            return []
+
+        normalized_candidates: List[Dict[str, Any]] = []
+
+        for index, candidate in enumerate(raw_candidates, start=1):
+            normalized = self._normalize_media_candidate(candidate, index)
+            if normalized:
+                normalized_candidates.append(normalized)
+
+        ordered = sorted(
+            normalized_candidates,
+            key=lambda item: (
+                int(item.get("priority", 999)),
+                int(item.get("rank", 999)),
+                -(item.get("score") if isinstance(item.get("score"), (int, float)) else -1),
+                item.get("label", ""),
+            ),
+        )
+
+        reindexed = []
+        for rank, candidate in enumerate(ordered, start=1):
+            item = dict(candidate)
+            item["rank"] = rank
+            reindexed.append(item)
+
+        return reindexed
+
+    def _normalize_media_candidate(self, candidate: Any, default_rank: int) -> Dict[str, Any] | None:
+        if not isinstance(candidate, dict):
+            return None
+
+        url = self._clean(candidate.get("url"))
+        if not url:
+            return None
+
+        media_type = self._normalize_media_type(candidate.get("type"), url)
+        role = self._normalize_media_role(candidate.get("role"), media_type)
+        priority = self.MEDIA_ROLE_PRIORITY[role]
+        source_tag = self._clean(candidate.get("source_tag")) or "unknown_source"
+
+        label = self._clean(candidate.get("label"))
+        if not label:
+            label = f"{role.title()} Candidate"
+
+        score = self._normalize_score(candidate.get("score"))
+
+        rank = self._safe_int(candidate.get("rank"))
+        if rank <= 0:
+            rank = default_rank
+
+        return {
+            "source_tag": source_tag,
+            "type": media_type,
+            "role": role,
+            "priority": priority,
+            "rank": rank,
+            "score": score,
+            "label": label,
+            "url": url,
+        }
+
+    def _normalize_media_role(self, value: Any, media_type: str) -> str:
+        normalized = self._clean(value).lower()
+        if normalized in self.MEDIA_ROLE_PRIORITY:
+            return normalized
+        if media_type == "video":
+            return "video"
+        return "additional"
+
+    def _normalize_media_type(self, value: Any, url: str = "") -> str:
+        normalized = self._clean(value).lower()
+        if normalized in {"image", "video"}:
+            return normalized
+
+        lowered_url = self._clean(url).lower()
+        if lowered_url.endswith((".mp4", ".mov", ".avi", ".webm", ".mkv")):
+            return "video"
+
+        return "image"
+
+    def _normalize_score(self, value: Any):
+        try:
+            return round(float(value), 4)
+        except Exception:
+            return None
+
+    def _parse_json_value(self, value: Any):
+        if value is None:
+            return []
+
+        if isinstance(value, (list, dict)):
+            return value
+
+        text = self._clean(value)
+        if not text:
+            return []
+
+        try:
+            return __import__("json").loads(text)
+        except Exception:
+            return text
+
+    def _parse_json_list(self, value: Any) -> List[Any]:
+        parsed = self._parse_json_value(value)
+        if isinstance(parsed, list):
+            return parsed
+        return []
 
     def _build_failure_visibility(self, record: Dict[str, Any]) -> Dict[str, Any]:
         row_id = self._clean(record.get("row_id"))
