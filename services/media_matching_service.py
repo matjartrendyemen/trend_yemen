@@ -13,6 +13,17 @@ class MediaMatchingService:
         "lifestyle": 4,
     }
 
+    SOURCE_PRIORITY = {
+        "seed_media": 0,
+        "cj": 10,
+        "cj_supplier": 10,
+        "aliexpress": 20,
+        "supplier_generic": 30,
+        "dummy_matcher": 80,
+        "pexels": 90,
+        "unknown_source": 99,
+    }
+
     DEFAULT_SOURCE_TAG = "dummy_matcher"
     SEED_SOURCE_TAG = "seed_media"
     PEXELS_SOURCE_TAG = "pexels"
@@ -58,6 +69,19 @@ class MediaMatchingService:
         except Exception:
             return None
 
+    def _normalize_source_tag(self, value):
+        normalized = self._clean_str(value).lower()
+        if not normalized:
+            return self.DEFAULT_SOURCE_TAG
+        return normalized
+
+    def _get_source_priority(self, source_tag):
+        normalized_source = self._normalize_source_tag(source_tag)
+        return self.SOURCE_PRIORITY.get(
+            normalized_source,
+            self.SOURCE_PRIORITY["unknown_source"],
+        )
+
     def _build_candidate(
         self,
         *,
@@ -71,9 +95,11 @@ class MediaMatchingService:
     ):
         normalized_role = self._normalize_role(role)
         normalized_type = self._normalize_type(media_type)
+        normalized_source_tag = self._normalize_source_tag(source_tag)
 
         return {
-            "source_tag": self._clean_str(source_tag) or self.DEFAULT_SOURCE_TAG,
+            "source_tag": normalized_source_tag,
+            "source_priority": self._get_source_priority(normalized_source_tag),
             "type": normalized_type,
             "role": normalized_role,
             "priority": self.ROLE_PRIORITY[normalized_role],
@@ -83,10 +109,18 @@ class MediaMatchingService:
             "url": self._clean_str(url),
         }
 
+    def _sort_bucket_for_candidate(self, candidate):
+        role = self._normalize_role(candidate.get("role"))
+        if role == "original":
+            return 0
+        return 1
+
     def _sort_and_reindex_candidates(self, candidates):
         ordered = sorted(
             candidates,
             key=lambda item: (
+                self._sort_bucket_for_candidate(item),
+                int(item.get("source_priority", 999)),
                 int(item.get("priority", 999)),
                 int(item.get("rank", 999)),
                 -(item.get("score") if isinstance(item.get("score"), (int, float)) else -1),
