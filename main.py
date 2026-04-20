@@ -10,6 +10,7 @@ from flask import Flask, jsonify, request, send_from_directory, url_for
 from core.orchestrator import MasterOrchestrator
 from storage.sheets_store import SheetsStore
 from services.admin_read_service import AdminReadService
+from services.content_output_service import ContentOutputService
 from services.media_matching_service import MediaMatchingService
 
 app = Flask(__name__)
@@ -18,6 +19,7 @@ orchestrator = MasterOrchestrator()
 sheets = SheetsStore()
 admin_read_service = AdminReadService()
 media_matching_service = MediaMatchingService(sheets)
+content_output_service = ContentOutputService(sheets)
 
 _orchestrator_thread = None
 _orchestrator_lock = threading.Lock()
@@ -443,6 +445,46 @@ def admin_select_final_media():
             "final_media_url": media_url,
             "final_media_status": "selected",
         })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route("/admin/generate_content", methods=["POST"])
+def admin_generate_content():
+    row_id = request.args.get("id", "").strip()
+
+    if not row_id:
+        return jsonify({
+            "status": "error",
+            "message": "Missing id"
+        }), 400
+
+    records = admin_read_service.get_all_admin_records()
+    record = next((item for item in records if item.get("row_id") == row_id), None)
+
+    if not record:
+        return jsonify({
+            "status": "error",
+            "message": "Row not found"
+        }), 404
+
+    try:
+        result = content_output_service.generate_for_row_id(row_id)
+        return jsonify({
+            "status": "ok",
+            "row_id": result.get("row_id", row_id),
+            "content_status": result.get("content_status", "ready"),
+            "content_ready_at": result.get("content_ready_at", ""),
+            "marketing_title": result.get("marketing_title", ""),
+        })
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 409
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -905,6 +947,30 @@ def admin_ui():
             color: #8a6300;
           }
 
+          .badge-content-eligible {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+            color: #4338ca;
+          }
+
+          .badge-content-ready {
+            background: #e9f8ee;
+            border-color: #cdebd7;
+            color: #15803d;
+          }
+
+          .badge-content-failed {
+            background: #fef0f0;
+            border-color: #fecaca;
+            color: #b91c1c;
+          }
+
+          .badge-content-notready {
+            background: #f9fafb;
+            border-color: #e5e7eb;
+            color: #6b7280;
+          }
+
           .row-actions {
             display: flex;
             gap: 8px;
@@ -1000,13 +1066,15 @@ def admin_ui():
             flex-wrap: wrap;
           }
 
-          .matched-media-block {
+          .matched-media-block,
+          .content-block {
             margin-top: 18px;
             padding-top: 16px;
             border-top: 1px solid #eef0f2;
           }
 
-          .matched-media-head {
+          .matched-media-head,
+          .content-head {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -1015,12 +1083,14 @@ def admin_ui():
             margin-bottom: 12px;
           }
 
-          .matched-media-head h3 {
+          .matched-media-head h3,
+          .content-head h3 {
             margin: 0;
             font-size: 15px;
           }
 
-          .matched-media-head p {
+          .matched-media-head p,
+          .content-head p {
             margin: 0;
             color: #6b7280;
             font-size: 13px;
@@ -1114,10 +1184,38 @@ def admin_ui():
             font-size: 12px;
           }
 
-          .matched-empty {
+          .matched-empty,
+          .content-empty {
             color: #6b7280;
             font-size: 13px;
             padding: 6px 0 2px;
+          }
+
+          .content-preview-grid {
+            display: grid;
+            gap: 12px;
+          }
+
+          .content-preview-item {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 12px;
+            background: #fafafa;
+          }
+
+          .content-preview-item h4 {
+            margin: 0 0 8px;
+            font-size: 13px;
+            color: #374151;
+          }
+
+          .content-preview-item p,
+          .content-preview-item div {
+            margin: 0;
+            font-size: 13px;
+            color: #111827;
+            white-space: pre-wrap;
+            word-break: break-word;
           }
 
           @media (max-width: 1100px) {
@@ -1397,6 +1495,10 @@ def admin_ui():
             return Boolean(getActionEligibility(record).release_to_failed);
           }
 
+          function canGenerateContent(record) {
+            return Boolean(getActionEligibility(record).generate_content);
+          }
+
           function getMatchedMediaStatus(record) {
             return (
               record.matched_media_status ||
@@ -1427,6 +1529,54 @@ def admin_ui():
               record.FinalMediaStatus ||
               "not_set"
             );
+          }
+
+          function getContentStatus(record) {
+            return record.content_status || "not_started";
+          }
+
+          function getContentReadiness(record) {
+            return record.content_readiness || "not_ready";
+          }
+
+          function getContentReadyAt(record) {
+            return record.content_ready_at || "—";
+          }
+
+          function getContentErrorMessage(record) {
+            return record.content_error_message || "—";
+          }
+
+          function getMarketingTitle(record) {
+            return record.marketing_title || "";
+          }
+
+          function getMarketingDescription(record) {
+            return record.marketing_description || "";
+          }
+
+          function getSocialPost(record) {
+            return record.social_post || "";
+          }
+
+          function getSeoKeywords(record) {
+            return record.seo_keywords || "";
+          }
+
+          function getSeoHashtags(record) {
+            return record.seo_hashtags || "";
+          }
+
+          function getContentEligibility(record) {
+            return record.content_eligibility || {};
+          }
+
+          function getContentReadinessClass(readiness) {
+            const normalized = String(readiness || "").toLowerCase();
+            if (normalized === "ready") return "badge badge-content-ready";
+            if (normalized === "failed") return "badge badge-content-failed";
+            if (normalized === "eligible") return "badge badge-content-eligible";
+            return "badge badge-content-notready";
           }
 
           function parseMatchedMedia(record) {
@@ -1569,6 +1719,7 @@ def admin_ui():
               const score = candidate.score !== undefined && candidate.score !== null ? String(candidate.score) : "—";
               const type = candidate.type || "image";
               const sourceTag = candidate.source_tag || "unknown";
+              const role = candidate.role || "additional";
               const url = getCandidateUrl(candidate);
               const selected = isFinalCandidate(record, candidate);
 
@@ -1593,6 +1744,7 @@ def admin_ui():
                     <div class="candidate-meta">
                       <div>Score: ${escapeHtml(score)}</div>
                       <div>Type: ${escapeHtml(type)}</div>
+                      <div>Role: ${escapeHtml(role)}</div>
                       <div>Source: ${escapeHtml(sourceTag)}</div>
                     </div>
                     ${previewLink}
@@ -1616,6 +1768,102 @@ def admin_ui():
                 </div>
                 <div class="matched-media-grid">
                   ${itemsHtml}
+                </div>
+              </div>
+            `;
+          }
+
+          function renderContentPreview(record) {
+            const contentStatus = getContentStatus(record);
+            const contentReadiness = getContentReadiness(record);
+            const contentReadyAt = getContentReadyAt(record);
+            const contentErrorMessage = getContentErrorMessage(record);
+            const marketingTitle = getMarketingTitle(record);
+            const marketingDescription = getMarketingDescription(record);
+            const socialPost = getSocialPost(record);
+            const seoKeywords = getSeoKeywords(record);
+            const seoHashtags = getSeoHashtags(record);
+            const eligibility = getContentEligibility(record);
+
+            const previewItems = [];
+
+            if (marketingTitle) {
+              previewItems.push(`
+                <div class="content-preview-item">
+                  <h4>Marketing Title</h4>
+                  <div>${escapeHtml(marketingTitle)}</div>
+                </div>
+              `);
+            }
+
+            if (marketingDescription) {
+              previewItems.push(`
+                <div class="content-preview-item">
+                  <h4>Marketing Description</h4>
+                  <div>${escapeHtml(marketingDescription)}</div>
+                </div>
+              `);
+            }
+
+            if (socialPost) {
+              previewItems.push(`
+                <div class="content-preview-item">
+                  <h4>Social Post</h4>
+                  <div>${escapeHtml(socialPost)}</div>
+                </div>
+              `);
+            }
+
+            if (seoKeywords) {
+              previewItems.push(`
+                <div class="content-preview-item">
+                  <h4>SEO Keywords</h4>
+                  <div>${escapeHtml(seoKeywords)}</div>
+                </div>
+              `);
+            }
+
+            if (seoHashtags) {
+              previewItems.push(`
+                <div class="content-preview-item">
+                  <h4>SEO Hashtags</h4>
+                  <div>${escapeHtml(seoHashtags)}</div>
+                </div>
+              `);
+            }
+
+            const eligibilityReason = eligibility.reason || "—";
+
+            if (!previewItems.length) {
+              return `
+                <div class="content-block">
+                  <div class="content-head">
+                    <div>
+                      <h3>Publish-Ready Content</h3>
+                      <p>Status: ${escapeHtml(contentStatus)} · Readiness: ${escapeHtml(contentReadiness)}</p>
+                    </div>
+                  </div>
+                  <div class="content-empty">No content output generated yet.</div>
+                  <div class="row-meta">Eligibility: ${escapeHtml(eligibilityReason)}</div>
+                  <div class="row-meta">Ready At: ${escapeHtml(contentReadyAt)}</div>
+                  <div class="row-meta row-meta-warning">Error: ${escapeHtml(contentErrorMessage)}</div>
+                </div>
+              `;
+            }
+
+            return `
+              <div class="content-block">
+                <div class="content-head">
+                  <div>
+                    <h3>Publish-Ready Content</h3>
+                    <p>Status: ${escapeHtml(contentStatus)} · Readiness: ${escapeHtml(contentReadiness)}</p>
+                  </div>
+                </div>
+                <div class="row-meta">Eligibility: ${escapeHtml(eligibilityReason)}</div>
+                <div class="row-meta">Ready At: ${escapeHtml(contentReadyAt)}</div>
+                <div class="row-meta row-meta-warning">Error: ${escapeHtml(contentErrorMessage)}</div>
+                <div class="content-preview-grid" style="margin-top: 12px;">
+                  ${previewItems.join("")}
                 </div>
               </div>
             `;
@@ -1658,6 +1906,10 @@ def admin_ui():
 
             const showResetToPending = canResetToPending(record);
             const showReleaseToFailed = canReleaseToFailed(record);
+            const showGenerateContent = canGenerateContent(record);
+
+            const contentStatus = getContentStatus(record);
+            const contentReadiness = getContentReadiness(record);
 
             const imageHtml = imageUrl
               ? `<img class="detail-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.style.display='none'" />`
@@ -1728,11 +1980,18 @@ def admin_ui():
 
                 <div class="detail-label">Final Media</div>
                 <div class="detail-value">${escapeHtml(finalMediaStatus)}</div>
+
+                <div class="detail-label">Content Status</div>
+                <div class="detail-value"><span class="${getContentReadinessClass(contentReadiness)}">${escapeHtml(contentStatus)}</span></div>
+
+                <div class="detail-label">Content Readiness</div>
+                <div class="detail-value"><span class="${getContentReadinessClass(contentReadiness)}">${escapeHtml(contentReadiness)}</span></div>
               </div>
 
               <div class="detail-actions">
                 <button type="button" class="action-secondary" onclick="matchMediaAction('${escapeHtml(String(rowId))}', this)">Match Media</button>
                 <button type="button" onclick="retryRowAction('${escapeHtml(String(rowId))}', this)">Retry</button>
+                ${showGenerateContent ? `<button type="button" class="action-primary" onclick="generateContentAction('${escapeHtml(String(rowId))}', this)">Generate Content</button>` : ``}
                 ${showResetToPending ? `<button type="button" onclick="resolveStuckAction('${escapeHtml(String(rowId))}', 'reset_to_pending', this)">Reset to Pending</button>` : ``}
                 ${showReleaseToFailed ? `<button type="button" class="action-danger" onclick="resolveStuckAction('${escapeHtml(String(rowId))}', 'release_to_failed', this)">Release to Failed</button>` : ``}
                 <button type="button" class="action-danger" onclick="deleteRowAction('${escapeHtml(String(rowId))}', this)">Delete</button>
@@ -1740,6 +1999,7 @@ def admin_ui():
               </div>
 
               ${renderMatchedMedia(record)}
+              ${renderContentPreview(record)}
             `;
           }
 
@@ -1853,6 +2113,8 @@ def admin_ui():
               const price = getPrice(record);
               const rowId = getRowId(record);
               const jsonUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
+              const contentReadiness = getContentReadiness(record);
+              const contentStatus = getContentStatus(record);
 
               const imageHtml = imageUrl
                 ? `<img class="thumb" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" onerror="this.outerHTML='&lt;div class=&quot;thumb-placeholder&quot;&gt;No image&lt;/div&gt;'" />`
@@ -1876,6 +2138,12 @@ def admin_ui():
                         )
                   );
 
+              const contentMetaHtml = `
+                <div class="row-meta">
+                  <span class="${getContentReadinessClass(contentReadiness)}">${escapeHtml(contentStatus)}</span>
+                </div>
+              `;
+
               return `
                 <tr data-row-id="${escapeHtml(String(record.row_id || ""))}" onclick="selectRow('${escapeHtml(String(record.row_id || ""))}')">
                   <td class="image-cell">${imageHtml}</td>
@@ -1884,6 +2152,7 @@ def admin_ui():
                   <td>
                     <span class="${getStatusClass(status)}">${escapeHtml(status)}</span>
                     ${statusMetaHtml}
+                    ${contentMetaHtml}
                   </td>
                   <td>${escapeHtml(price)}</td>
                   <td><div class="truncate">${escapeHtml(rowId)}</div></td>
@@ -1891,6 +2160,7 @@ def admin_ui():
                     <div class="row-actions">
                       <button type="button" class="action-secondary" onclick="event.stopPropagation(); matchMediaAction('${escapeHtml(String(rowId))}', this)">Match Media</button>
                       <button type="button" onclick="event.stopPropagation(); retryRowAction('${escapeHtml(String(rowId))}', this)">Retry</button>
+                      <button type="button" class="action-primary" onclick="event.stopPropagation(); generateContentAction('${escapeHtml(String(rowId))}', this)">Generate Content</button>
                       <button type="button" class="action-danger" onclick="event.stopPropagation(); deleteRowAction('${escapeHtml(String(rowId))}', this)">Delete</button>
                       <a class="action-link" href="${escapeHtml(jsonUrl)}" target="_blank" onclick="event.stopPropagation()">View JSON</a>
                     </div>
@@ -2136,6 +2406,34 @@ def admin_ui():
             }
           }
 
+          async function generateContentAction(rowId, buttonEl) {
+            if (!rowId || rowId === "—") return;
+
+            clearError();
+            const buttonState = setButtonBusy(buttonEl, "Generating...");
+            setStatus("Generating content for row " + rowId + "...");
+
+            try {
+              const result = await fetchJson("/admin/generate_content?id=" + encodeURIComponent(rowId), {
+                method: "POST"
+              });
+
+              selectedRowId = rowId;
+              await loadRegistry({
+                keepSelection: true,
+                preferredRowId: rowId
+              });
+
+              showFlash("Content generated for row " + rowId);
+              setStatus("Content generation completed");
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Content generation failed");
+            } finally {
+              restoreButton(buttonEl, buttonState);
+            }
+          }
+
           async function createProductAction(event) {
             event.preventDefault();
 
@@ -2206,6 +2504,7 @@ def admin_ui():
           window.deleteRowAction = deleteRowAction;
           window.matchMediaAction = matchMediaAction;
           window.selectFinalMediaAction = selectFinalMediaAction;
+          window.generateContentAction = generateContentAction;
 
           loadRegistry();
         </script>
