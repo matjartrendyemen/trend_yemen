@@ -33,6 +33,17 @@ class SheetsStore:
         "FinalizedAt",
     ]
 
+    CONTENT_COLUMNS = [
+        "MarketingTitle",
+        "MarketingDescription",
+        "SocialPost",
+        "SEOKeywords",
+        "SEOHashtags",
+        "ContentStatus",
+        "ContentReadyAt",
+        "ContentErrorMessage",
+    ]
+
     MEDIA_JSON_COLUMNS = {
         "MatchedMediaJSON",
         "FinalGalleryMediaJSON",
@@ -80,6 +91,7 @@ class SheetsStore:
         expected_columns = (
             self.REQUIRED_RESULT_COLUMNS
             + self.MEDIA_COLUMNS
+            + self.CONTENT_COLUMNS
             + self.REGISTRATION_REQUIRED_COLUMNS
         )
         missing_columns = [
@@ -294,4 +306,27 @@ class SheetsStore:
                 row_index,
                 col,
                 normalized_value
+            )
+
+    def update_content_fields(self, row_id, content_fields: Any):
+        if not isinstance(content_fields, dict):
+            raise ValueError("update_content_fields expects a dict")
+
+        self._refresh_headers()
+        self._ensure_required_columns()
+        self._refresh_headers()
+
+        row_index = self._get_row_index_by_id(row_id)
+        if not row_index:
+            raise ValueError(f"RowID not found: {row_id}")
+
+        for key, value in content_fields.items():
+            col = self.col_map.get(key)
+            if not col or key not in self.CONTENT_COLUMNS:
+                continue
+
+            self.sheet.update_cell(
+                row_index,
+                col,
+                "" if value is None else str(value)
             )
