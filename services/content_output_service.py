@@ -124,6 +124,97 @@ class ContentOutputService:
             strategy_hint=strategy_hint,
         )
 
+    def _normalize_content_payload(self, content_payload):
+        if not isinstance(content_payload, dict):
+            return {
+                "status": "failed",
+                "error_message": "Content payload is missing or invalid",
+                "marketing_title": "",
+                "marketing_description": "",
+                "social_post": "",
+                "seo_keywords": "",
+                "seo_hashtags": "",
+            }
+
+        normalized = {
+            "status": self._first_non_empty(
+                content_payload.get("status"),
+                content_payload.get("content_status"),
+            ).lower(),
+            "error_message": self._first_non_empty(
+                content_payload.get("error_message"),
+                content_payload.get("message"),
+                content_payload.get("error"),
+            ),
+            "marketing_title": self._first_non_empty(
+                content_payload.get("marketing_title"),
+                content_payload.get("title"),
+                content_payload.get("MarketingTitle"),
+            ),
+            "marketing_description": self._first_non_empty(
+                content_payload.get("marketing_description"),
+                content_payload.get("description"),
+                content_payload.get("MarketingDescription"),
+            ),
+            "social_post": self._first_non_empty(
+                content_payload.get("social_post"),
+                content_payload.get("post"),
+                content_payload.get("SocialPost"),
+            ),
+            "seo_keywords": self._first_non_empty(
+                content_payload.get("seo_keywords"),
+                content_payload.get("keywords"),
+                content_payload.get("SEOKeywords"),
+            ),
+            "seo_hashtags": self._first_non_empty(
+                content_payload.get("seo_hashtags"),
+                content_payload.get("hashtags"),
+                content_payload.get("SEOHashtags"),
+            ),
+        }
+
+        if not normalized["status"]:
+            normalized["status"] = "failed"
+
+        return normalized
+
+    def _validate_ready_payload(self, normalized_payload):
+        if normalized_payload.get("status") != "ready":
+            return False, normalized_payload.get("error_message") or "Content generation failed"
+
+        required_fields = [
+            ("marketing_title", "MarketingTitle"),
+            ("marketing_description", "MarketingDescription"),
+            ("social_post", "SocialPost"),
+            ("seo_keywords", "SEOKeywords"),
+            ("seo_hashtags", "SEOHashtags"),
+        ]
+
+        missing = []
+        for key, label in required_fields:
+            if not self._clean(normalized_payload.get(key)):
+                missing.append(label)
+
+        if missing:
+            return False, "Missing generated content fields: " + ", ".join(missing)
+
+        return True, ""
+
+    def _write_failed_content(self, row_id, error_message):
+        self.sheets.update_content_fields(
+            row_id,
+            {
+                "MarketingTitle": "",
+                "MarketingDescription": "",
+                "SocialPost": "",
+                "SEOKeywords": "",
+                "SEOHashtags": "",
+                "ContentStatus": "failed",
+                "ContentReadyAt": "",
+                "ContentErrorMessage": self._clean(error_message) or "Content generation failed",
+            },
+        )
+
     def generate_for_row_id(self, row_id):
         normalized_row_id = self._clean(row_id)
         if not normalized_row_id:
@@ -140,7 +231,7 @@ class ContentOutputService:
         content_brief = self._build_content_brief(eligibility)
 
         try:
-            content_payload = self.seo.generate_publish_ready_content(
+            raw_payload = self.seo.generate_publish_ready_content(
                 product_name=eligibility["product_name"],
                 category_id=eligibility["category_id"],
                 manual_price=eligibility["manual_price"],
@@ -150,14 +241,7 @@ class ContentOutputService:
                 content_brief=content_brief,
             )
         except Exception as e:
-            self.sheets.update_content_fields(
-                normalized_row_id,
-                {
-                    "ContentStatus": "failed",
-                    "ContentReadyAt": "",
-                    "ContentErrorMessage": str(e),
-                },
-            )
+            self._write_failed_content(normalized_row_id, str(e))
             return {
                 "row_id": normalized_row_id,
                 "content_status": "failed",
@@ -165,34 +249,30 @@ class ContentOutputService:
                 "error_message": str(e),
             }
 
-        status = self._clean(content_payload.get("status")) or "ready"
-        error_message = self._clean(content_payload.get("error_message"))
+        content_payload = self._normalize_content_payload(raw_payload)
+        is_valid, validation_error = self._validate_ready_payload(content_payload)
 
-        if status != "ready":
-            self.sheets.update_content_fields(
+        if not is_valid:
+            self._write_failed_content(
                 normalized_row_id,
-                {
-                    "ContentStatus": "failed",
-                    "ContentReadyAt": "",
-                    "ContentErrorMessage": error_message or "Content generation failed",
-                },
+                validation_error or content_payload.get("error_message") or "Content generation failed",
             )
             return {
                 "row_id": normalized_row_id,
                 "content_status": "failed",
                 "content_ready_at": "",
-                "error_message": error_message or "Content generation failed",
+                "error_message": validation_error or content_payload.get("error_message") or "Content generation failed",
             }
 
         ready_at = self._now_iso()
         self.sheets.update_content_fields(
             normalized_row_id,
             {
-                "MarketingTitle": content_payload.get("marketing_title", ""),
-                "MarketingDescription": content_payload.get("marketing_description", ""),
-                "SocialPost": content_payload.get("social_post", ""),
-                "SEOKeywords": content_payload.get("seo_keywords", ""),
-                "SEOHashtags": content_payload.get("seo_hashtags", ""),
+                "MarketingTitle": content_payload["marketing_title"],
+                "MarketingDescription": content_payload["marketing_description"],
+                "SocialPost": content_payload["social_post"],
+                "SEOKeywords": content_payload["seo_keywords"],
+                "SEOHashtags": content_payload["seo_hashtags"],
                 "ContentStatus": "ready",
                 "ContentReadyAt": ready_at,
                 "ContentErrorMessage": "",
@@ -203,5 +283,5 @@ class ContentOutputService:
             "row_id": normalized_row_id,
             "content_status": "ready",
             "content_ready_at": ready_at,
-            "marketing_title": self._clean(content_payload.get("marketing_title")),
+            "marketing_title": content_payload["marketing_title"],
         }
