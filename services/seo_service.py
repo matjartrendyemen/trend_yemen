@@ -83,6 +83,11 @@ class SEOService:
             "hashtag_stems": [
                 "راحة", "صحة", "يومك_أخف", "حل_عملي", "اختيار_أفضل",
             ],
+            "cta_short_forms": [
+                "اطلبه الآن",
+                "ابدأ فرق الراحة اليوم",
+                "جرّبه من اليوم",
+            ],
         },
         "beauty": {
             "display_name": "Beauty",
@@ -124,6 +129,11 @@ class SEOService:
             ],
             "hashtag_stems": [
                 "جمال", "عناية", "إشراقة", "ثقة", "روتين_جمال",
+            ],
+            "cta_short_forms": [
+                "اختاري لمستك الأجمل اليوم",
+                "امنحي نفسك إشراقة أجمل",
+                "ابدئي عنايتك الآن",
             ],
         },
         "home_convenience": {
@@ -167,6 +177,11 @@ class SEOService:
             "hashtag_stems": [
                 "منزل", "راحة_منزلية", "تنظيم", "حل_عملي", "يومك_أسهل",
             ],
+            "cta_short_forms": [
+                "اجعلي يومك أسهل الآن",
+                "اختاري الراحة العملية",
+                "ابدئي الحل الأذكى اليوم",
+            ],
         },
         "gadget": {
             "display_name": "Gadget",
@@ -208,6 +223,11 @@ class SEOService:
             ],
             "hashtag_stems": [
                 "تقنية", "أداة_ذكية", "حل_أذكى", "عملي", "منتجات_تقنية",
+            ],
+            "cta_short_forms": [
+                "جرّب الحل الأذكى الآن",
+                "ابدأ تجربة أذكى اليوم",
+                "اختر الأداء العملي الآن",
             ],
         },
         "fitness": {
@@ -251,6 +271,11 @@ class SEOService:
             "hashtag_stems": [
                 "لياقة", "نشاط", "ابدأ_الآن", "تمرين", "نتيجة_أفضل",
             ],
+            "cta_short_forms": [
+                "ابدأ التغيير الآن",
+                "خذ أول خطوة اليوم",
+                "ابدأ نشاطك من الآن",
+            ],
         },
         "kids_family": {
             "display_name": "Kids / family",
@@ -292,6 +317,11 @@ class SEOService:
             ],
             "hashtag_stems": [
                 "عائلة", "راحة_الأسرة", "أطفال", "سهولة_يومية", "حل_عملي",
+            ],
+            "cta_short_forms": [
+                "وفّر راحة أكثر لعائلتك",
+                "اختر الحل العملي اليوم",
+                "اجعل يومكم أسهل الآن",
             ],
         },
         "general": {
@@ -335,6 +365,11 @@ class SEOService:
             "hashtag_stems": [
                 "منتجات_مميزة", "اختيار_ذكي", "قيمة", "عملي", "اختيار_أفضل",
             ],
+            "cta_short_forms": [
+                "اطلبه الآن",
+                "جرّبه اليوم",
+                "ابدأ اختيارًا أذكى الآن",
+            ],
         },
     }
 
@@ -345,15 +380,23 @@ class SEOService:
         "ready",
         "finalized",
         "home",
+        "preview",
+        "raw",
+        "system",
         "جاهز للمراجعة",
         "الحالة الإعلامية",
         "داخل المتجر",
         "داخل متجر",
         "قابل للمراجعة",
-        "preview",
-        "raw",
-        "system",
+        "منتج مميز",
     ]
+
+    MIN_HASHTAGS = 2
+    MAX_HASHTAGS = 6
+    MAX_TITLE_LENGTH = 68
+    MAX_DESCRIPTION_LENGTH = 260
+    MAX_SOCIAL_LENGTH = 340
+    MAX_KEYWORDS = 8
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
@@ -373,19 +416,63 @@ class SEOService:
     def _collapse_whitespace(self, text):
         return re.sub(r"\s+", " ", self._clean(text)).strip()
 
+    def _unique_preserve_order(self, items):
+        result = []
+        seen = set()
+        for item in items:
+            normalized = self._clean(item)
+            lowered = normalized.lower()
+            if not normalized or lowered in seen:
+                continue
+            seen.add(lowered)
+            result.append(normalized)
+        return result
+
+    def _strip_system_phrases(self, text):
+        cleaned = self._clean(text)
+        if not cleaned:
+            return ""
+
+        result = cleaned
+        for phrase in self.BANNED_SYSTEM_PHRASES:
+            if not phrase:
+                continue
+            result = re.sub(re.escape(phrase), "", result, flags=re.IGNORECASE)
+
+        result = result.replace("..", ".")
+        result = result.replace("،،", "،")
+        result = re.sub(r"[|_/]+", " ", result)
+        result = re.sub(r"\s+([،.!؟])", r"\1", result)
+        result = re.sub(r"([،.!؟]){2,}", r"\1", result)
+        return self._collapse_whitespace(result)
+
+    def _split_words(self, text):
+        return [word for word in re.split(r"\s+", self._clean(text)) if word]
+
     def _normalize_product_name(self, value):
-        text = self._clean(value)
-        text = re.sub(r"[|_/]+", " ", text)
-        text = self._collapse_whitespace(text)
+        text = self._strip_system_phrases(value)
+        text = re.sub(r"[-–—]+", " ", text)
+        tokens = self._split_words(text)
 
-        parts = text.split()
-        if len(parts) > 8:
-            text = " ".join(parts[:8])
+        cleaned_tokens = []
+        for token in tokens:
+            stripped = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
+            if not stripped:
+                continue
+            if len(stripped) > 28:
+                continue
+            cleaned_tokens.append(stripped)
 
-        return text or "منتج مميز"
+        cleaned_tokens = self._unique_preserve_order(cleaned_tokens)
+        if len(cleaned_tokens) > 6:
+            cleaned_tokens = cleaned_tokens[:6]
+
+        marketing_name = " ".join(cleaned_tokens)
+        marketing_name = self._collapse_whitespace(marketing_name)
+        return marketing_name or "اختيار عملي"
 
     def _normalize_category_text(self, value):
-        text = self._clean(value)
+        text = self._strip_system_phrases(value)
         text = re.sub(r"[_|/]+", " ", text)
         return self._collapse_whitespace(text)
 
@@ -403,23 +490,12 @@ class SEOService:
         index = self._checksum(seed_text) % len(valid_options)
         return valid_options[index]
 
-    def _strip_system_phrases(self, text):
-        cleaned = self._clean(text)
-        if not cleaned:
-            return ""
+    def _count_occurrences(self, text, term):
+        if not self._clean(text) or not self._clean(term):
+            return 0
+        return len(re.findall(re.escape(term), text, flags=re.IGNORECASE))
 
-        result = cleaned
-        for phrase in self.BANNED_SYSTEM_PHRASES:
-            pattern = re.compile(rf"\b{re.escape(phrase)}\b", flags=re.IGNORECASE)
-            result = pattern.sub("", result)
-
-        result = result.replace("..", ".")
-        result = result.replace("،،", "،")
-        result = re.sub(r"\s+([،.!؟])", r"\1", result)
-        result = re.sub(r"([،.!؟]){2,}", r"\1", result)
-        return self._collapse_whitespace(result)
-
-    def _limit_product_name_repetition(self, text, product_name, max_occurrences=1):
+    def _remove_excess_name_repetition(self, text, product_name, max_occurrences=1):
         cleaned_text = self._clean(text)
         cleaned_name = self._clean(product_name)
 
@@ -428,34 +504,38 @@ class SEOService:
 
         pattern = re.compile(re.escape(cleaned_name), flags=re.IGNORECASE)
         matches = list(pattern.finditer(cleaned_text))
-
         if len(matches) <= max_occurrences:
             return cleaned_text
 
         result_parts = []
         last_index = 0
+        kept = 0
 
-        for idx, match in enumerate(matches):
+        for match in matches:
             result_parts.append(cleaned_text[last_index:match.start()])
-            if idx < max_occurrences:
+            if kept < max_occurrences:
                 result_parts.append(match.group(0))
+                kept += 1
             last_index = match.end()
 
         result_parts.append(cleaned_text[last_index:])
-        result = "".join(result_parts)
-        return self._collapse_whitespace(result)
+        return self._collapse_whitespace("".join(result_parts))
+
+    def _truncate_safely(self, text, max_length):
+        cleaned = self._clean(text)
+        if len(cleaned) <= max_length:
+            return cleaned
+        shortened = cleaned[:max_length].rstrip(" ،.!؟")
+        return shortened + "..."
 
     def _sanitize_text(self, text, product_name="", max_length=600):
         cleaned = self._strip_system_phrases(text)
-        cleaned = self._limit_product_name_repetition(cleaned, product_name, max_occurrences=1)
+        cleaned = self._remove_excess_name_repetition(cleaned, product_name, max_occurrences=1)
         cleaned = re.sub(r"\s+\n", "\n", cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         cleaned = cleaned.strip(" -|،\n\t")
-        cleaned = self._collapse_whitespace(cleaned.replace(" \n", "\n")).replace(" \n", "\n")
-
-        if len(cleaned) > max_length:
-            cleaned = cleaned[:max_length].rstrip(" ،.!؟") + "..."
-
+        cleaned = self._collapse_whitespace(cleaned.replace(" \n", "\n"))
+        cleaned = self._truncate_safely(cleaned, max_length)
         return cleaned
 
     def _normalize_keywords(self, values):
@@ -478,6 +558,9 @@ class SEOService:
             if not normalized:
                 continue
 
+            if len(normalized) > 28:
+                normalized = self._truncate_safely(normalized, 28).rstrip(".")
+
             lowered = normalized.lower()
             if lowered in seen:
                 continue
@@ -485,7 +568,7 @@ class SEOService:
             seen.add(lowered)
             cleaned_items.append(normalized)
 
-        return ", ".join(cleaned_items[:8])
+        return ", ".join(cleaned_items[: self.MAX_KEYWORDS])
 
     def _normalize_hashtags(self, values):
         items = []
@@ -509,6 +592,12 @@ class SEOService:
             if not normalized:
                 continue
 
+            if len(normalized) > 24:
+                normalized = normalized[:24].rstrip("_")
+
+            if not normalized:
+                continue
+
             tag = "#" + normalized
             lowered = tag.lower()
 
@@ -518,7 +607,7 @@ class SEOService:
             seen.add(lowered)
             cleaned_tags.append(tag)
 
-        return " ".join(cleaned_tags[:8])
+        return " ".join(cleaned_tags[: self.MAX_HASHTAGS])
 
     def _extract_first_json_object(self, text):
         raw = self._clean(text)
@@ -573,6 +662,19 @@ class SEOService:
             **self.STRATEGY_LIBRARY.get(strategy_key, self.STRATEGY_LIBRARY["general"]),
         }
 
+    def _strengthen_cta(self, cta, strategy_profile, seed_text):
+        short_forms = strategy_profile.get("cta_short_forms") or []
+        fallback_cta = self._pick_variant(short_forms, seed_text + "|cta_short")
+        candidate = self._sanitize_text(cta or fallback_cta, max_length=55)
+
+        if not candidate:
+            candidate = fallback_cta or "اطلبه الآن"
+
+        if len(candidate) > 55:
+            candidate = self._truncate_safely(candidate, 55)
+
+        return candidate
+
     def build_content_brief(
         self,
         product_name,
@@ -603,8 +705,9 @@ class SEOService:
         pain_line = self._pick_variant(strategy_profile["pain_lines"], seed_text + "|pain")
         solution_line = self._pick_variant(strategy_profile["solution_lines"], seed_text + "|solution")
         desire_line = self._pick_variant(strategy_profile["desire_lines"], seed_text + "|desire")
-        cta = self._pick_variant(strategy_profile["cta_templates"], seed_text + "|cta")
+        raw_cta = self._pick_variant(strategy_profile["cta_templates"], seed_text + "|cta")
         title_template = self._pick_variant(strategy_profile["title_templates"], seed_text + "|title")
+        strong_cta = self._strengthen_cta(raw_cta, strategy_profile, seed_text)
 
         keyword_candidates = [
             clean_name,
@@ -633,7 +736,7 @@ class SEOService:
             "pain_line": pain_line,
             "solution_line": solution_line,
             "desire_line": desire_line,
-            "cta": cta,
+            "cta": strong_cta,
             "title_template": title_template,
             "keyword_candidates": keyword_candidates,
             "hashtag_candidates": hashtag_candidates,
@@ -648,7 +751,11 @@ class SEOService:
 
     def _compose_marketing_title(self, brief):
         title = self._render_template(brief["title_template"], brief)
-        return self._sanitize_text(title, product_name=brief["product_name"], max_length=90)
+        title = self._sanitize_text(title, product_name=brief["product_name"], max_length=self.MAX_TITLE_LENGTH)
+        words = self._split_words(title)
+        if len(words) > 8:
+            title = self._truncate_safely(" ".join(words[:8]), self.MAX_TITLE_LENGTH)
+        return title
 
     def _compose_marketing_description(self, brief):
         description = " ".join([
@@ -657,18 +764,175 @@ class SEOService:
             self._render_template(brief["desire_line"], brief),
             f"بسعر {brief['manual_price']}.",
         ])
-        return self._sanitize_text(description, product_name=brief["product_name"], max_length=320)
+        return self._sanitize_text(
+            description,
+            product_name=brief["product_name"],
+            max_length=self.MAX_DESCRIPTION_LENGTH,
+        )
 
     def _compose_social_post(self, brief, seo_hashtags):
         lines = [
-            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=120),
-            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=160),
-            self._sanitize_text(self._render_template(brief["desire_line"], brief), product_name=brief["product_name"], max_length=160),
-            f"السعر: {brief['manual_price']}",
-            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=120),
+            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=110),
+            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=120),
+            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=55),
             seo_hashtags,
         ]
         return "\n".join([line for line in lines if self._clean(line)])
+
+    def _condense_social_post(self, social_post, brief, seo_hashtags):
+        raw_lines = re.split(r"[\n\r]+", self._clean(social_post))
+        clean_lines = []
+
+        for line in raw_lines:
+            sanitized = self._sanitize_text(line, product_name=brief["product_name"], max_length=120)
+            if sanitized:
+                clean_lines.append(sanitized)
+
+        clean_lines = self._unique_preserve_order(clean_lines)
+
+        if not clean_lines:
+            clean_lines = [
+                self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=110),
+                self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=120),
+            ]
+
+        condensed = []
+
+        if clean_lines:
+            condensed.append(clean_lines[0])
+
+        benefit_line = None
+        for line in clean_lines[1:]:
+            if brief["cta"] not in line and not line.startswith("#"):
+                benefit_line = line
+                break
+
+        if not benefit_line:
+            benefit_line = self._sanitize_text(
+                self._render_template(brief["desire_line"], brief),
+                product_name=brief["product_name"],
+                max_length=120,
+            )
+
+        condensed.append(benefit_line)
+        condensed.append(self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=55))
+        condensed.append(seo_hashtags)
+
+        final_post = "\n".join([line for line in condensed if self._clean(line)])
+        return self._truncate_safely(final_post, self.MAX_SOCIAL_LENGTH)
+
+    def _has_raw_long_chunk(self, text):
+        for token in self._split_words(text):
+            if len(token) > 28:
+                return True
+        return False
+
+    def _validate_quality(self, payload, brief):
+        title = self._clean(payload.get("marketing_title"))
+        description = self._clean(payload.get("marketing_description"))
+        social_post = self._clean(payload.get("social_post"))
+        hashtags = self._clean(payload.get("seo_hashtags"))
+        keywords = self._clean(payload.get("seo_keywords"))
+        product_name = self._clean(brief["product_name"])
+        cta = self._clean(brief["cta"])
+
+        if not title:
+            return False, "Quality gate rejected: MarketingTitle is empty"
+
+        if len(title) > self.MAX_TITLE_LENGTH:
+            return False, "Quality gate rejected: MarketingTitle is too long"
+
+        if len(self._split_words(title)) > 8:
+            return False, "Quality gate rejected: MarketingTitle is too long structurally"
+
+        if self._has_raw_long_chunk(title):
+            return False, "Quality gate rejected: MarketingTitle still looks raw"
+
+        if not description:
+            return False, "Quality gate rejected: MarketingDescription is empty"
+
+        if self._has_raw_long_chunk(description):
+            return False, "Quality gate rejected: MarketingDescription contains raw long strings"
+
+        if not social_post:
+            return False, "Quality gate rejected: SocialPost is empty"
+
+        if len(social_post) > self.MAX_SOCIAL_LENGTH:
+            return False, "Quality gate rejected: SocialPost is too long"
+
+        if cta and cta not in social_post:
+            return False, "Quality gate rejected: CTA is missing from SocialPost"
+
+        hashtag_list = [tag for tag in hashtags.split() if tag.startswith("#")]
+        if len(hashtag_list) < self.MIN_HASHTAGS:
+            return False, "Quality gate rejected: not enough hashtags"
+
+        if len(hashtag_list) > self.MAX_HASHTAGS:
+            return False, "Quality gate rejected: too many hashtags"
+
+        if not keywords:
+            return False, "Quality gate rejected: SEOKeywords is empty"
+
+        if self._count_occurrences(title, product_name) > 1:
+            return False, "Quality gate rejected: product name repeats too much in title"
+
+        if self._count_occurrences(description, product_name) > 2:
+            return False, "Quality gate rejected: product name repeats too much in description"
+
+        if self._count_occurrences(social_post, product_name) > 2:
+            return False, "Quality gate rejected: product name repeats too much in SocialPost"
+
+        for phrase in self.BANNED_SYSTEM_PHRASES:
+            if phrase and phrase.lower() in title.lower():
+                return False, "Quality gate rejected: MarketingTitle still contains raw/system wording"
+            if phrase and phrase.lower() in description.lower():
+                return False, "Quality gate rejected: MarketingDescription still contains raw/system wording"
+            if phrase and phrase.lower() in social_post.lower():
+                return False, "Quality gate rejected: SocialPost still contains raw/system wording"
+
+        return True, ""
+
+    def _apply_quality_gate(self, payload, brief):
+        seo_keywords = self._normalize_keywords(payload.get("seo_keywords"))
+        seo_hashtags = self._normalize_hashtags(payload.get("seo_hashtags"))
+
+        sanitized = {
+            "marketing_title": self._compose_marketing_title(brief) if not self._clean(payload.get("marketing_title")) else self._sanitize_text(
+                payload.get("marketing_title"),
+                product_name=brief["product_name"],
+                max_length=self.MAX_TITLE_LENGTH,
+            ),
+            "marketing_description": self._compose_marketing_description(brief) if not self._clean(payload.get("marketing_description")) else self._sanitize_text(
+                payload.get("marketing_description"),
+                product_name=brief["product_name"],
+                max_length=self.MAX_DESCRIPTION_LENGTH,
+            ),
+            "social_post": self._clean(payload.get("social_post")),
+            "seo_keywords": seo_keywords or self._normalize_keywords(brief["keyword_candidates"]),
+            "seo_hashtags": seo_hashtags or self._normalize_hashtags(brief["hashtag_candidates"]),
+            "status": "ready",
+            "error_message": "",
+        }
+
+        if not sanitized["social_post"]:
+            sanitized["social_post"] = self._compose_social_post(brief, sanitized["seo_hashtags"])
+
+        sanitized["marketing_title"] = self._truncate_safely(sanitized["marketing_title"], self.MAX_TITLE_LENGTH)
+        sanitized["social_post"] = self._condense_social_post(sanitized["social_post"], brief, sanitized["seo_hashtags"])
+
+        passed, reason = self._validate_quality(sanitized, brief)
+        if not passed:
+            return {
+                "marketing_title": sanitized["marketing_title"],
+                "marketing_description": sanitized["marketing_description"],
+                "social_post": sanitized["social_post"],
+                "seo_keywords": sanitized["seo_keywords"],
+                "seo_hashtags": sanitized["seo_hashtags"],
+                "status": "gated_failed",
+                "error_message": reason,
+            }
+
+        return sanitized
 
     def _build_deterministic_payload(self, brief):
         seo_keywords = self._normalize_keywords(brief["keyword_candidates"])
@@ -678,15 +942,18 @@ class SEOService:
         marketing_description = self._compose_marketing_description(brief)
         social_post = self._compose_social_post(brief, seo_hashtags)
 
-        return {
-            "marketing_title": marketing_title,
-            "marketing_description": marketing_description,
-            "social_post": social_post,
-            "seo_keywords": seo_keywords,
-            "seo_hashtags": seo_hashtags,
-            "status": "ready",
-            "error_message": "",
-        }
+        return self._apply_quality_gate(
+            {
+                "marketing_title": marketing_title,
+                "marketing_description": marketing_description,
+                "social_post": social_post,
+                "seo_keywords": seo_keywords,
+                "seo_hashtags": seo_hashtags,
+                "status": "ready",
+                "error_message": "",
+            },
+            brief,
+        )
 
     def _build_ai_prompt(self, brief):
         keyword_candidates = ", ".join([self._clean(item) for item in brief["keyword_candidates"] if self._clean(item)])
@@ -696,7 +963,7 @@ class SEOService:
 
         return f"""
 أنت Senior Arabic Direct Response Copywriter.
-المطلوب كتابة commercial copy عربي احترافي جدًا، يبدو بشريًا ومقنعًا ومناسبًا للنشر المباشر.
+المطلوب كتابة commercial copy عربي احترافي جدًا، بشري، مقنع، مناسب للنشر المباشر، وقابل للتحويل.
 
 الاستراتيجية:
 - Strategy: {brief["strategy_name"]}
@@ -725,9 +992,11 @@ SEO hints:
 - لا تستخدم wording تشغيلي أو إداري أو آلي
 - لا تستخدم: selected / approved / ready / finalized / Trend Yemen / home
 - لا تكرر اسم المنتج بشكل خام أو ممل
-- اجعل MarketingTitle قصيرة وقوية وبيعية
-- اجعل MarketingDescription مقنعة وواضحة الزاوية
-- اجعل SocialPost بصيغة تحويلية حقيقية: Hook ثم benefit ثم angle ثم CTA ثم hashtags
+- اجعل MarketingTitle قصيرة وقوية
+- اجعل MarketingDescription مقنعة وواضحة
+- اجعل SocialPost قصيرة نسبيًا وقابلة للتحويل
+- اجعل CTA مباشرة وقوية
+- اجعل hashtags نظيفة ومحدودة
 - لا تغيّر السعر
 - لا تضف أي شرح خارج JSON
 
@@ -740,55 +1009,6 @@ SEO hints:
   "seo_hashtags": ["#...", "#..."]
 }}
 """.strip()
-
-    def _sanitize_payload(self, payload, brief):
-        marketing_title = self._sanitize_text(
-            payload.get("marketing_title", ""),
-            product_name=brief["product_name"],
-            max_length=90,
-        )
-        marketing_description = self._sanitize_text(
-            payload.get("marketing_description", ""),
-            product_name=brief["product_name"],
-            max_length=320,
-        )
-        social_post = self._clean(payload.get("social_post", ""))
-        seo_keywords = self._normalize_keywords(payload.get("seo_keywords"))
-        seo_hashtags = self._normalize_hashtags(payload.get("seo_hashtags"))
-
-        if not marketing_title:
-            marketing_title = self._compose_marketing_title(brief)
-
-        if not marketing_description:
-            marketing_description = self._compose_marketing_description(brief)
-
-        if not social_post:
-            social_post = self._compose_social_post(brief, seo_hashtags)
-
-        social_post = self._sanitize_text(
-            social_post,
-            product_name=brief["product_name"],
-            max_length=700,
-        )
-
-        if brief["cta"] not in social_post:
-            social_post = "\n".join([social_post, brief["cta"]])
-
-        if not seo_hashtags:
-            seo_hashtags = self._normalize_hashtags(brief["hashtag_candidates"])
-
-        if seo_hashtags not in social_post:
-            social_post = "\n".join([social_post, seo_hashtags])
-
-        return {
-            "marketing_title": marketing_title,
-            "marketing_description": marketing_description,
-            "social_post": social_post,
-            "seo_keywords": seo_keywords or self._normalize_keywords(brief["keyword_candidates"]),
-            "seo_hashtags": seo_hashtags,
-            "status": "ready",
-            "error_message": "",
-        }
 
     def _merge_ai_payload_with_brief(self, ai_payload, brief, fallback):
         if not isinstance(ai_payload, dict):
@@ -804,7 +1024,7 @@ SEO hints:
             "error_message": "",
         }
 
-        return self._sanitize_payload(merged, brief)
+        return self._apply_quality_gate(merged, brief)
 
     def generate_publish_ready_content(
         self,
