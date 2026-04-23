@@ -1,5 +1,7 @@
 import os
+import re
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -7,14 +9,16 @@ import requests
 
 class CJSupplierService:
     """
-    Slice 1 only:
+    Slice 1 + Slice 2 + Slice 3:
     - CJ auth via apiKey -> accessToken
     - on-demand raw retrieval only
     - raw images / video refs / basic metadata
     - no pricing usage
     - no ordering
     - no sync loops
-    - failure-safe by returning empty results / None instead of breaking callers
+    - safe matching engine
+    - strict safe threshold
+    - canonical candidate payload mapping for media layer
     """
 
     AUTH_URL = "https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken"
@@ -24,6 +28,21 @@ class CJSupplierService:
     DEFAULT_TIMEOUT_SECONDS = 15
     DEFAULT_PAGE_SIZE = 10
     MAX_PAGE_SIZE = 100
+
+    MAX_SEARCH_KEYWORDS = 2
+    MAX_RAW_RESULTS_PER_QUERY = 8
+    SAFE_MATCH_THRESHOLD = 0.62
+    STRONG_MATCH_THRESHOLD = 0.78
+
+    MATCH_STOPWORDS = {
+        "the", "with", "for", "and", "new", "hot", "sale", "gift", "best",
+        "product", "products", "item", "items", "tool", "tools", "set",
+        "piece", "pieces", "pack", "kit", "portable", "smart", "wireless",
+        "usb", "led", "mini", "pro", "max", "plus",
+        "من", "في", "على", "الى", "إلى", "مع", "عن", "هذا", "هذه", "ذلك",
+        "تلك", "منتج", "أداة", "اداة", "قطعة", "قطع", "جديد", "عرض", "عدة",
+        "طقم", "لل", "لـ", "مناسب", "عملية", "عملي",
+    }
 
     def __init__(self):
         self.api_key = (os.getenv("CJ_API_KEY") or "").strip()
@@ -54,6 +73,12 @@ class CJSupplierService:
         except Exception:
             return default
 
+    def _safe_float(self, value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
     def _is_token_valid(self) -> bool:
         if not self._access_token:
             return False
@@ -61,7 +86,6 @@ class CJSupplierService:
         if not self._access_token_expires_at:
             return True
 
-        # Refresh slightly before expiry to stay safe.
         return self._utcnow() < (self._access_token_expires_at - timedelta(minutes=5))
 
     def _parse_expiry(self, value: Any) -> Optional[datetime]:
@@ -188,10 +212,6 @@ class CJSupplierService:
         include_video: bool = True,
         include_category: bool = True,
     ) -> List[Dict[str, Any]]:
-        """
-        Raw product discovery via CJ product/listV2.
-        Returns flattened product list only.
-        """
         cleaned_keyword = self._clean_str(keyword)
         if not cleaned_keyword:
             self._set_error("CJ keyword is required")
@@ -244,7 +264,6 @@ class CJSupplierService:
                             flattened_products.append(product)
 
         if not flattened_products:
-            # Be tolerant in case CJ changes list shape.
             direct_list = data.get("list")
             if isinstance(direct_list, list):
                 for product in direct_list:
@@ -262,10 +281,6 @@ class CJSupplierService:
         variant_sku: str = "",
         include_video: bool = True,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Raw detail retrieval via CJ product/query.
-        Only raw media/basic metadata usage.
-        """
         pid = self._clean_str(pid)
         product_sku = self._clean_str(product_sku)
         variant_sku = self._clean_str(variant_sku)
@@ -300,7 +315,6 @@ class CJSupplierService:
 
         data = self._extract_data_object(payload)
 
-        # Tolerant extraction because CJ may return nested content/list/object.
         if isinstance(data.get("content"), list) and data["content"]:
             first_item = data["content"][0]
             if isinstance(first_item, dict):
@@ -494,11 +508,6 @@ class CJSupplierService:
         hydrate_details: bool = True,
         include_video: bool = True,
     ) -> List[Dict[str, Any]]:
-        """
-        On-demand raw retrieval for internal supplier foundation work.
-        Returns raw-but-usable records.
-        Failure-safe: returns [] instead of raising.
-        """
         products = self.search_products_raw(
             keyword=keyword,
             page=page,
@@ -530,3 +539,396 @@ class CJSupplierService:
             records.append(self._build_raw_record(product=product, detail=detail))
 
         return records
+
+    # ---------------------------------------------------------------------
+    # Slice 2 — Safe matching engine
+    # ---------------------------------------------------------------------
+
+    def _normalize_match_text(self, value: Any) -> str:
+        text = self._clean_str(value).lower()
+        text = re.sub(r"[_|/\\-]+", " ", text)
+        text = re.sub(r"[^\w\s\u0600-\u06FF]", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    def _tokenize_for_match(self, value: Any) -> List[str]:
+        normalized = self._normalize_match_text(value)
+        if not normalized:
+            return []
+
+        tokens = normalized.split()
+        filtered: List[str] = []
+
+        for token in tokens:
+            if token in self.MATCH_STOPWORDS:
+                continue
+            if len(token) < 2:
+                continue
+            filtered.append(token)
+
+        return filtered
+
+    def _build_safe_search_keywords(self, product_name: str, category_id: str = "") -> List[str]:
+        name_tokens = self._tokenize_for_match(product_name)
+        category_tokens = self._tokenize_for_match(category_id)
+
+        keywords: List[str] = []
+
+        primary = " ".join(name_tokens[:5]).strip()
+        if primary:
+            keywords.append(primary)
+
+        combined_tokens = name_tokens[:4]
+        if category_tokens:
+            combined_tokens += category_tokens[:2]
+
+        combined = " ".join(combined_tokens).strip()
+        if combined and combined not in keywords:
+            keywords.append(combined)
+
+        return keywords[: self.MAX_SEARCH_KEYWORDS]
+
+    def _sequence_similarity(self, a: str, b: str) -> float:
+        if not a or not b:
+            return 0.0
+        return round(SequenceMatcher(None, a, b).ratio(), 4)
+
+    def _token_overlap_ratio(self, source_tokens: List[str], target_tokens: List[str]) -> float:
+        if not source_tokens or not target_tokens:
+            return 0.0
+
+        source_set = set(source_tokens)
+        target_set = set(target_tokens)
+        overlap = source_set.intersection(target_set)
+
+        if not overlap:
+            return 0.0
+
+        return round(len(overlap) / max(len(source_set), 1), 4)
+
+    def _category_overlap_ratio(self, category_tokens: List[str], candidate_tokens: List[str]) -> float:
+        if not category_tokens or not candidate_tokens:
+            return 0.0
+
+        category_set = set(category_tokens)
+        candidate_set = set(candidate_tokens)
+        overlap = category_set.intersection(candidate_set)
+
+        if not overlap:
+            return 0.0
+
+        return round(len(overlap) / max(len(category_set), 1), 4)
+
+    def _candidate_name_fields(self, raw_record: Dict[str, Any]) -> str:
+        return self._clean_str(
+            raw_record.get("product_name")
+            or raw_record.get("product_sku")
+            or raw_record.get("category_name")
+        )
+
+    def _score_raw_record(
+        self,
+        *,
+        product_name: str,
+        category_id: str,
+        matched_keyword: str,
+        raw_record: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        query_name = self._normalize_match_text(product_name)
+        query_tokens = self._tokenize_for_match(product_name)
+        category_tokens = self._tokenize_for_match(category_id)
+        keyword_tokens = self._tokenize_for_match(matched_keyword)
+
+        candidate_name = self._normalize_match_text(self._candidate_name_fields(raw_record))
+        candidate_category = self._normalize_match_text(raw_record.get("category_name"))
+
+        candidate_tokens = self._tokenize_for_match(
+            f"{candidate_name} {candidate_category}"
+        )
+
+        name_similarity = self._sequence_similarity(query_name, candidate_name)
+        keyword_similarity = self._sequence_similarity(
+            self._normalize_match_text(matched_keyword),
+            candidate_name,
+        )
+        token_overlap = self._token_overlap_ratio(query_tokens, candidate_tokens)
+        keyword_overlap = self._token_overlap_ratio(keyword_tokens, candidate_tokens)
+        category_overlap = self._category_overlap_ratio(category_tokens, candidate_tokens)
+
+        exact_name_bonus = 0.10 if query_name and query_name == candidate_name else 0.0
+        main_image_bonus = 0.05 if self._clean_str(raw_record.get("main_image_url")) else 0.0
+        video_bonus = 0.02 if raw_record.get("has_video") else 0.0
+
+        confidence = (
+            (name_similarity * 0.42)
+            + (keyword_similarity * 0.18)
+            + (token_overlap * 0.25)
+            + (keyword_overlap * 0.10)
+            + (category_overlap * 0.08)
+            + exact_name_bonus
+            + main_image_bonus
+            + video_bonus
+        )
+
+        confidence = round(min(confidence, 1.0), 4)
+
+        return {
+            "confidence": confidence,
+            "metrics": {
+                "name_similarity": name_similarity,
+                "keyword_similarity": keyword_similarity,
+                "token_overlap": token_overlap,
+                "keyword_overlap": keyword_overlap,
+                "category_overlap": category_overlap,
+                "exact_name_bonus": exact_name_bonus,
+                "main_image_bonus": main_image_bonus,
+                "video_bonus": video_bonus,
+            },
+        }
+
+    def _is_safe_match(
+        self,
+        *,
+        score_payload: Dict[str, Any],
+    ) -> bool:
+        confidence = float(score_payload.get("confidence", 0.0))
+        metrics = score_payload.get("metrics") or {}
+
+        name_similarity = float(metrics.get("name_similarity", 0.0))
+        token_overlap = float(metrics.get("token_overlap", 0.0))
+        keyword_overlap = float(metrics.get("keyword_overlap", 0.0))
+
+        if confidence < self.SAFE_MATCH_THRESHOLD:
+            return False
+
+        if name_similarity >= 0.90:
+            return True
+
+        if token_overlap >= 0.50 and keyword_overlap >= 0.50:
+            return True
+
+        if name_similarity >= 0.72 and token_overlap >= 0.34:
+            return True
+
+        if confidence >= self.STRONG_MATCH_THRESHOLD:
+            return True
+
+        return False
+
+    def _dedupe_ranked_matches(self, ranked_matches: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+
+        for item in ranked_matches:
+            record = item.get("raw_record") or {}
+            dedupe_key = (
+                self._clean_str(record.get("product_id")),
+                self._clean_str(record.get("main_image_url")),
+                self._clean_str(record.get("product_name")),
+            )
+
+            if dedupe_key in seen:
+                continue
+
+            seen.add(dedupe_key)
+            deduped.append(item)
+
+        return deduped
+
+    def find_safe_matches(
+        self,
+        *,
+        product_name: str,
+        category_id: str = "",
+        max_results: int = 3,
+        hydrate_details: bool = True,
+        include_video: bool = True,
+    ) -> List[Dict[str, Any]]:
+        cleaned_product_name = self._clean_str(product_name)
+        if not cleaned_product_name:
+            self._set_error("Safe CJ matching requires product_name")
+            return []
+
+        search_keywords = self._build_safe_search_keywords(
+            product_name=cleaned_product_name,
+            category_id=category_id,
+        )
+        if not search_keywords:
+            self._set_error("Safe CJ matching could not derive usable search keywords")
+            return []
+
+        ranked_matches: List[Dict[str, Any]] = []
+
+        for keyword in search_keywords:
+            raw_records = self.collect_raw_media_records(
+                keyword=keyword,
+                page=1,
+                size=self.MAX_RAW_RESULTS_PER_QUERY,
+                hydrate_details=hydrate_details,
+                include_video=include_video,
+            )
+
+            if not raw_records:
+                continue
+
+            for raw_record in raw_records:
+                if not isinstance(raw_record, dict):
+                    continue
+
+                score_payload = self._score_raw_record(
+                    product_name=cleaned_product_name,
+                    category_id=category_id,
+                    matched_keyword=keyword,
+                    raw_record=raw_record,
+                )
+
+                if not self._is_safe_match(score_payload=score_payload):
+                    continue
+
+                ranked_matches.append({
+                    "matched_keyword": keyword,
+                    "match_confidence": score_payload["confidence"],
+                    "match_metrics": score_payload["metrics"],
+                    "raw_record": raw_record,
+                })
+
+        if not ranked_matches:
+            self._clear_error()
+            return []
+
+        ranked_matches.sort(
+            key=lambda item: (
+                -float(item.get("match_confidence", 0.0)),
+                -float((item.get("match_metrics") or {}).get("name_similarity", 0.0)),
+                -float((item.get("match_metrics") or {}).get("token_overlap", 0.0)),
+            )
+        )
+
+        ranked_matches = self._dedupe_ranked_matches(ranked_matches)
+
+        safe_results: List[Dict[str, Any]] = []
+        for item in ranked_matches[: max(1, int(max_results))]:
+            raw_record = dict(item["raw_record"])
+            raw_record["source_family"] = "supplier"
+            raw_record["source_name"] = "cj"
+            raw_record["source_tag"] = "cj_supplier"
+            raw_record["match_confidence"] = item["match_confidence"]
+            raw_record["matched_keyword"] = item["matched_keyword"]
+            raw_record["match_metrics"] = item["match_metrics"]
+            safe_results.append(raw_record)
+
+        self._clear_error()
+        return safe_results
+
+    def find_best_safe_match(
+        self,
+        *,
+        product_name: str,
+        category_id: str = "",
+        hydrate_details: bool = True,
+        include_video: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        safe_matches = self.find_safe_matches(
+            product_name=product_name,
+            category_id=category_id,
+            max_results=1,
+            hydrate_details=hydrate_details,
+            include_video=include_video,
+        )
+        if not safe_matches:
+            return None
+        return safe_matches[0]
+
+    # ---------------------------------------------------------------------
+    # Slice 3 — Canonical candidate mapping
+    # ---------------------------------------------------------------------
+
+    def _dedupe_urls(self, values: List[str]) -> List[str]:
+        urls: List[str] = []
+        seen = set()
+
+        for value in values:
+            url = self._clean_str(value)
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            urls.append(url)
+
+        return urls
+
+    def build_canonical_candidate_payloads(
+        self,
+        safe_match: Dict[str, Any],
+        *,
+        base_label: str = "",
+        max_images: int = 2,
+        include_video: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns canonical-ish payloads ready to be normalized by MediaMatchingService.
+        No schema redesign:
+        - source_family = supplier
+        - source_name = cj
+        - source_tag = cj_supplier
+        """
+        if not isinstance(safe_match, dict):
+            return []
+
+        product_name = self._clean_str(
+            safe_match.get("product_name")
+            or safe_match.get("product_sku")
+            or base_label
+            or "CJ Match"
+        )
+        label_base = self._clean_str(base_label) or product_name or "CJ Match"
+
+        confidence = max(0.0, min(self._safe_float(safe_match.get("match_confidence"), 0.0), 0.99))
+        product_id = self._clean_str(safe_match.get("product_id"))
+        product_sku = self._clean_str(safe_match.get("product_sku"))
+        matched_keyword = self._clean_str(safe_match.get("matched_keyword"))
+
+        image_urls = self._dedupe_urls(
+            [safe_match.get("main_image_url", "")]
+            + list(safe_match.get("image_urls") or [])
+        )
+        video_urls = self._dedupe_urls(list(safe_match.get("video_urls") or []))
+
+        payloads: List[Dict[str, Any]] = []
+
+        if include_video and video_urls:
+            payloads.append({
+                "source_family": "supplier",
+                "source_name": "cj",
+                "source_tag": "cj_supplier",
+                "type": "video",
+                "role": "video",
+                "rank": 20,
+                "score": round(min(confidence + 0.02, 0.99), 4),
+                "label": f"{label_base} — CJ Video",
+                "url": video_urls[0],
+                "supplier_product_id": product_id,
+                "supplier_product_sku": product_sku,
+                "matched_keyword": matched_keyword,
+                "match_confidence": confidence,
+                "match_metrics": safe_match.get("match_metrics") or {},
+            })
+
+        for idx, image_url in enumerate(image_urls[: max(0, int(max_images))], start=1):
+            payloads.append({
+                "source_family": "supplier",
+                "source_name": "cj",
+                "source_tag": "cj_supplier",
+                "type": "image",
+                "role": "additional",
+                "rank": 30 + idx,
+                "score": round(max(confidence - ((idx - 1) * 0.01), 0.0), 4),
+                "label": f"{label_base} — CJ Image {idx}",
+                "url": image_url,
+                "supplier_product_id": product_id,
+                "supplier_product_sku": product_sku,
+                "matched_keyword": matched_keyword,
+                "match_confidence": confidence,
+                "match_metrics": safe_match.get("match_metrics") or {},
+            })
+
+        return payloads
