@@ -109,6 +109,21 @@ class ContentOutputService:
                 return row
         return None
 
+    def _build_content_brief(self, eligibility):
+        strategy_hint = self.seo.infer_strategy_hint(
+            eligibility["product_name"],
+            eligibility["category_id"],
+        )
+
+        return self.seo.build_content_brief(
+            product_name=eligibility["product_name"],
+            category_id=eligibility["category_id"],
+            manual_price=eligibility["manual_price"],
+            final_media_url=eligibility["final_primary_media_url"],
+            final_media_status=eligibility["final_media_status"],
+            strategy_hint=strategy_hint,
+        )
+
     def generate_for_row_id(self, row_id):
         normalized_row_id = self._clean(row_id)
         if not normalized_row_id:
@@ -122,6 +137,8 @@ class ContentOutputService:
         if not eligibility["is_eligible"]:
             raise ValueError(eligibility["reason"])
 
+        content_brief = self._build_content_brief(eligibility)
+
         try:
             content_payload = self.seo.generate_publish_ready_content(
                 product_name=eligibility["product_name"],
@@ -129,6 +146,8 @@ class ContentOutputService:
                 manual_price=eligibility["manual_price"],
                 final_media_url=eligibility["final_primary_media_url"],
                 final_media_status=eligibility["final_media_status"],
+                strategy_hint=content_brief.get("strategy_key", ""),
+                content_brief=content_brief,
             )
         except Exception as e:
             self.sheets.update_content_fields(
