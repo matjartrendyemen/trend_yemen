@@ -43,6 +43,7 @@ class SEOService:
     STRATEGY_LIBRARY = {
         "health_pain_relief": {
             "display_name": "Health / Pain relief",
+            "arabic_fallback_name": "أداة راحة يومية",
             "hook_templates": [
                 "إذا كان الانزعاج اليومي يسرق راحتك، فهذا النوع من الحلول يصنع فرقًا واضحًا.",
                 "الراحة الحقيقية تبدأ من اختيار عملي يخفف عبء يومك.",
@@ -79,6 +80,7 @@ class SEOService:
         },
         "beauty": {
             "display_name": "Beauty",
+            "arabic_fallback_name": "منتج عناية أنيق",
             "hook_templates": [
                 "الإشراقة الجميلة تبدأ من عناية تعكس حضورك الحقيقي.",
                 "حين تختارين العناية الصحيحة، يظهر الفرق في التفاصيل.",
@@ -115,6 +117,7 @@ class SEOService:
         },
         "home_convenience": {
             "display_name": "Home convenience",
+            "arabic_fallback_name": "أداة منزلية عملية",
             "hook_templates": [
                 "الأشياء التي تجعل البيت أسهل هي الأفضل قيمة في اليوم العادي.",
                 "حين تصبح التفاصيل المنزلية أبسط، يصبح يومك أخف.",
@@ -151,6 +154,7 @@ class SEOService:
         },
         "gadget": {
             "display_name": "Gadget",
+            "arabic_fallback_name": "أداة ذكية عملية",
             "hook_templates": [
                 "الحل الأذكى هو الذي يختصر عليك الوقت من أول استخدام.",
                 "أحيانًا أداة واحدة عملية تغيّر إيقاع يومك بالكامل.",
@@ -187,6 +191,7 @@ class SEOService:
         },
         "fitness": {
             "display_name": "Fitness",
+            "arabic_fallback_name": "أداة دعم النشاط",
             "hook_templates": [
                 "النتيجة تبدأ من قرار صغير تلتزم به كل يوم.",
                 "إذا كنت تريد بداية أقوى، ابدأ بأداة تدعمك فعليًا.",
@@ -223,6 +228,7 @@ class SEOService:
         },
         "kids_family": {
             "display_name": "Kids / family",
+            "arabic_fallback_name": "منتج عملي للعائلة",
             "hook_templates": [
                 "راحة العائلة تبدأ من التفاصيل التي تسهّل اليوم كله.",
                 "كل اختيار عملي للأسرة ينعكس على راحة البيت بشكل واضح.",
@@ -259,6 +265,7 @@ class SEOService:
         },
         "general": {
             "display_name": "General commercial",
+            "arabic_fallback_name": "اختيار عملي مميز",
             "hook_templates": [
                 "الاختيار الذكي هو الذي يمنحك فائدة واضحة من أول مرة.",
                 "إذا كنت تبحث عن قيمة عملية وشكل مقنع، فهذا النوع يستحق الانتباه.",
@@ -316,6 +323,16 @@ class SEOService:
         "serum": "سيروم",
         "cleanser": "منظف",
         "usb": "منفذ",
+        "neck": "رقبة",
+        "back": "ظهر",
+        "skin": "بشرة",
+        "hair": "شعر",
+        "cleaner": "منظف",
+        "organizer": "منظم",
+        "storage": "ترتيب",
+        "sport": "رياضة",
+        "training": "تدريب",
+        "workout": "تمرين",
     }
 
     BANNED_SYSTEM_PHRASES = [
@@ -327,20 +344,34 @@ class SEOService:
         "preview",
         "raw",
         "system",
+        "general",
+        "content status",
+        "marketing output",
         "جاهز للمراجعة",
         "الحالة الإعلامية",
         "داخل المتجر",
         "داخل متجر",
         "قابل للمراجعة",
-        "content status",
-        "marketing output",
     ]
+
+    BANNED_HASHTAG_TERMS = {
+        "general",
+        "product",
+        "products",
+        "item",
+        "items",
+        "category",
+        "test",
+        "default",
+        "unknown",
+        "misc",
+    }
 
     MIN_HASHTAGS = 2
     MAX_HASHTAGS = 5
-    MAX_TITLE_LENGTH = 58
+    MAX_TITLE_LENGTH = 52
     MAX_DESCRIPTION_LENGTH = 260
-    MAX_SOCIAL_LENGTH = 280
+    MAX_SOCIAL_LENGTH = 240
     MAX_KEYWORDS = 6
 
     def __init__(self):
@@ -421,6 +452,16 @@ class SEOService:
 
         return self._collapse_whitespace(" ".join(translated))
 
+    def _english_ratio(self, text):
+        cleaned = self._clean(text)
+        if not cleaned:
+            return 0.0
+        ascii_letters = len(re.findall(r"[A-Za-z]", cleaned))
+        total_letters = len(re.findall(r"[A-Za-z\u0600-\u06FF]", cleaned))
+        if total_letters == 0:
+            return 0.0
+        return ascii_letters / total_letters
+
     def _unique_preserve_order(self, items):
         result = []
         seen = set()
@@ -447,9 +488,9 @@ class SEOService:
             plain = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
             if not plain:
                 continue
-            if len(plain) > 24:
+            if len(plain) > 22:
                 return True
-            if re.search(r"[A-Za-z]", plain) and re.search(r"\d", plain) and len(plain) > 10:
+            if re.search(r"[A-Za-z]", plain) and re.search(r"\d", plain) and len(plain) > 9:
                 return True
         return False
 
@@ -495,7 +536,11 @@ class SEOService:
         cleaned = self._truncate_safely(cleaned, max_length)
         return cleaned
 
-    def _normalize_product_name(self, value):
+    def _fallback_marketing_name(self, strategy_key):
+        strategy = self.STRATEGY_LIBRARY.get(strategy_key) or self.STRATEGY_LIBRARY["general"]
+        return strategy.get("arabic_fallback_name") or "اختيار عملي مميز"
+
+    def _normalize_product_name(self, value, strategy_key="general"):
         text = self._strip_system_phrases(value)
         text = self._translate_known_english(text)
         text = re.sub(r"[-–—]+", " ", text)
@@ -507,16 +552,32 @@ class SEOService:
             stripped = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
             if not stripped:
                 continue
-            if len(stripped) > 16:
+            if len(stripped) > 14:
                 continue
-            if re.search(r"\d", stripped) and len(stripped) > 6:
+            if re.search(r"\d", stripped) and len(stripped) > 5:
+                continue
+            if stripped.lower() in self.BANNED_HASHTAG_TERMS:
                 continue
             cleaned_tokens.append(stripped)
 
-        cleaned_tokens = self._unique_preserve_order(cleaned_tokens)[:4]
+        cleaned_tokens = self._unique_preserve_order(cleaned_tokens)
+
+        arabic_tokens = [token for token in cleaned_tokens if re.search(r"[\u0600-\u06FF]", token)]
+        if len(arabic_tokens) >= 2:
+            cleaned_tokens = arabic_tokens[:4]
+        else:
+            cleaned_tokens = cleaned_tokens[:3]
+
         marketing_name = self._collapse_whitespace(" ".join(cleaned_tokens))
-        if not marketing_name or self._contains_long_raw_token(marketing_name):
-            return "اختيار عملي"
+
+        if not marketing_name:
+            return self._fallback_marketing_name(strategy_key)
+
+        if self._contains_long_raw_token(marketing_name):
+            return self._fallback_marketing_name(strategy_key)
+
+        if self._english_ratio(marketing_name) > 0.40:
+            return self._fallback_marketing_name(strategy_key)
 
         return marketing_name
 
@@ -524,7 +585,10 @@ class SEOService:
         text = self._strip_system_phrases(value)
         text = self._translate_known_english(text)
         text = re.sub(r"[_|/]+", " ", text)
-        return self._collapse_whitespace(text)
+        text = self._collapse_whitespace(text)
+        if text.lower() in self.BANNED_HASHTAG_TERMS:
+            return ""
+        return text
 
     def _normalize_price_text(self, value):
         price_text = self._clean(value)
@@ -552,6 +616,10 @@ class SEOService:
             if not normalized:
                 continue
             if self._contains_long_raw_token(normalized):
+                continue
+            if self._english_ratio(normalized) > 0.45:
+                continue
+            if normalized.lower() in self.BANNED_HASHTAG_TERMS:
                 continue
 
             lowered = normalized.lower()
@@ -586,6 +654,8 @@ class SEOService:
             if not normalized:
                 continue
             if len(normalized) > 18:
+                continue
+            if normalized.lower() in self.BANNED_HASHTAG_TERMS:
                 continue
 
             tag = "#" + normalized
@@ -634,12 +704,12 @@ class SEOService:
     def _strengthen_cta(self, cta, strategy_profile, seed_text):
         short_forms = strategy_profile.get("cta_short_forms") or []
         fallback_cta = self._pick_variant(short_forms, seed_text + "|cta_short")
-        candidate = self._sanitize_text(cta or fallback_cta, max_length=38)
+        candidate = self._sanitize_text(cta or fallback_cta, max_length=34)
 
         if not candidate:
             candidate = fallback_cta or "اطلبه الآن"
 
-        return self._truncate_safely(candidate, 38)
+        return self._truncate_safely(candidate, 34)
 
     def build_content_brief(
         self,
@@ -650,20 +720,23 @@ class SEOService:
         final_media_status,
         strategy_hint="",
     ):
-        clean_name = self._normalize_product_name(product_name)
+        initial_strategy_profile = self._build_strategy_profile(
+            product_name=self._clean(product_name),
+            category_id=self._clean(category_id),
+            strategy_hint=strategy_hint,
+        )
+
+        strategy_key = initial_strategy_profile["strategy_key"]
+        clean_name = self._normalize_product_name(product_name, strategy_key=strategy_key)
         clean_category = self._normalize_category_text(category_id)
         clean_price = self._normalize_price_text(manual_price)
         clean_media_url = self._clean(final_media_url)
         clean_media_status = self._clean(final_media_status) or "final"
 
-        strategy_profile = self._build_strategy_profile(
-            product_name=clean_name,
-            category_id=clean_category,
-            strategy_hint=strategy_hint,
-        )
+        strategy_profile = self.STRATEGY_LIBRARY.get(strategy_key, self.STRATEGY_LIBRARY["general"])
 
         seed_text = self._join_non_empty(
-            [clean_name, clean_category, clean_price, strategy_profile["strategy_key"]],
+            [clean_name, clean_category, clean_price, strategy_key],
             delimiter="|",
         )
 
@@ -673,7 +746,7 @@ class SEOService:
             "manual_price": clean_price,
             "final_media_present": bool(clean_media_url),
             "final_media_status": clean_media_status,
-            "strategy_key": strategy_profile["strategy_key"],
+            "strategy_key": strategy_key,
             "strategy_name": strategy_profile["display_name"],
             "hook": self._pick_variant(strategy_profile["hook_templates"], seed_text + "|hook"),
             "title_template": self._pick_variant(strategy_profile["title_templates"], seed_text + "|title"),
@@ -708,8 +781,8 @@ class SEOService:
         title = self._render_template(brief["title_template"], brief)
         title = self._sanitize_text(title, product_name=brief["product_name"], max_length=self.MAX_TITLE_LENGTH)
         words = self._split_words(title)
-        if len(words) > 7:
-            title = self._truncate_safely(" ".join(words[:7]), self.MAX_TITLE_LENGTH)
+        if len(words) > 6:
+            title = self._truncate_safely(" ".join(words[:6]), self.MAX_TITLE_LENGTH)
         return title
 
     def _compose_marketing_description(self, brief):
@@ -727,10 +800,10 @@ class SEOService:
 
     def _compose_social_post(self, brief, seo_hashtags):
         lines = [
-            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=85),
-            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=95),
+            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=70),
+            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=78),
             f"السعر: {brief['manual_price']}",
-            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=38),
+            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=34),
             seo_hashtags,
         ]
         return "\n".join([line for line in lines if self._clean(line)])
@@ -743,7 +816,7 @@ class SEOService:
             sanitized = self._sanitize_text(
                 line,
                 product_name=brief["product_name"],
-                max_length=95,
+                max_length=78,
             )
             if sanitized:
                 clean_lines.append(sanitized)
@@ -752,8 +825,8 @@ class SEOService:
 
         if not clean_lines:
             clean_lines = [
-                self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=85),
-                self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=95),
+                self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=70),
+                self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=78),
             ]
 
         condensed = [clean_lines[0]]
@@ -768,12 +841,12 @@ class SEOService:
             benefit_line = self._sanitize_text(
                 self._render_template(brief["desire_line"], brief),
                 product_name=brief["product_name"],
-                max_length=85,
+                max_length=72,
             )
 
         condensed.append(benefit_line)
         condensed.append(f"السعر: {brief['manual_price']}")
-        condensed.append(self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=38))
+        condensed.append(self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=34))
         condensed.append(seo_hashtags)
 
         final_post = "\n".join([line for line in condensed if self._clean(line)])
@@ -934,6 +1007,7 @@ SEO hints:
 - العنوان عربي وقصير
 - لا تستخدم wording تشغيلي أو إداري
 - لا تكرر اسم المنتج بشكل خام
+- تجنب الكلمات العامة مثل general
 - SocialPost قصيرة وتحويلية
 - CTA واضحة
 - لا تغيّر السعر
