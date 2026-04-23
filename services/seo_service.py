@@ -373,6 +373,30 @@ class SEOService:
         },
     }
 
+    ENGLISH_TO_ARABIC = {
+        "wireless": "لاسلكي",
+        "smart": "ذكي",
+        "portable": "محمول",
+        "charger": "شاحن",
+        "massager": "مساج",
+        "massage": "مساج",
+        "device": "جهاز",
+        "gadget": "أداة",
+        "fitness": "لياقة",
+        "beauty": "جمال",
+        "home": "منزلي",
+        "kitchen": "مطبخ",
+        "baby": "أطفال",
+        "kids": "أطفال",
+        "family": "عائلي",
+        "relief": "راحة",
+        "pain": "ألم",
+        "serum": "سيروم",
+        "cleanser": "منظف",
+        "led": "إضاءة",
+        "usb": "منفذ",
+    }
+
     BANNED_SYSTEM_PHRASES = [
         "trend yemen",
         "selected",
@@ -388,15 +412,16 @@ class SEOService:
         "داخل المتجر",
         "داخل متجر",
         "قابل للمراجعة",
-        "منتج مميز",
+        "marketing output",
+        "content status",
     ]
 
     MIN_HASHTAGS = 2
-    MAX_HASHTAGS = 6
-    MAX_TITLE_LENGTH = 68
-    MAX_DESCRIPTION_LENGTH = 260
-    MAX_SOCIAL_LENGTH = 340
-    MAX_KEYWORDS = 8
+    MAX_HASHTAGS = 5
+    MAX_TITLE_LENGTH = 52
+    MAX_DESCRIPTION_LENGTH = 240
+    MAX_SOCIAL_LENGTH = 240
+    MAX_KEYWORDS = 6
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
@@ -416,17 +441,22 @@ class SEOService:
     def _collapse_whitespace(self, text):
         return re.sub(r"\s+", " ", self._clean(text)).strip()
 
-    def _unique_preserve_order(self, items):
-        result = []
-        seen = set()
-        for item in items:
-            normalized = self._clean(item)
-            lowered = normalized.lower()
-            if not normalized or lowered in seen:
-                continue
-            seen.add(lowered)
-            result.append(normalized)
-        return result
+    def _split_words(self, text):
+        return [word for word in re.split(r"\s+", self._clean(text)) if word]
+
+    def _join_non_empty(self, values, delimiter=" "):
+        return delimiter.join([self._clean(value) for value in values if self._clean(value)])
+
+    def _checksum(self, text):
+        normalized = self._clean(text)
+        return sum(ord(ch) for ch in normalized)
+
+    def _pick_variant(self, options, seed_text):
+        valid_options = [item for item in options if self._clean(item)]
+        if not valid_options:
+            return ""
+        index = self._checksum(seed_text) % len(valid_options)
+        return valid_options[index]
 
     def _strip_system_phrases(self, text):
         cleaned = self._clean(text)
@@ -446,49 +476,56 @@ class SEOService:
         result = re.sub(r"([،.!؟]){2,}", r"\1", result)
         return self._collapse_whitespace(result)
 
-    def _split_words(self, text):
-        return [word for word in re.split(r"\s+", self._clean(text)) if word]
-
-    def _normalize_product_name(self, value):
-        text = self._strip_system_phrases(value)
-        text = re.sub(r"[-–—]+", " ", text)
+    def _translate_known_english(self, text):
         tokens = self._split_words(text)
+        translated = []
 
-        cleaned_tokens = []
         for token in tokens:
-            stripped = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
-            if not stripped:
+            cleaned = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
+            lowered = cleaned.lower()
+            replacement = self.ENGLISH_TO_ARABIC.get(lowered)
+            translated.append(replacement or token)
+
+        return self._collapse_whitespace(" ".join(translated))
+
+    def _contains_arabic(self, text):
+        return bool(re.search(r"[\u0600-\u06FF]", self._clean(text)))
+
+    def _contains_long_raw_token(self, text):
+        for token in self._split_words(text):
+            plain = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
+            if not plain:
                 continue
-            if len(stripped) > 28:
+            if len(plain) > 22:
+                return True
+            if re.search(r"[A-Za-z]", plain) and re.search(r"\d", plain) and len(plain) > 10:
+                return True
+        return False
+
+    def _english_ratio(self, text):
+        cleaned = self._clean(text)
+        if not cleaned:
+            return 0.0
+
+        ascii_letters = len(re.findall(r"[A-Za-z]", cleaned))
+        total_letters = len(re.findall(r"[A-Za-z\u0600-\u06FF]", cleaned))
+        if total_letters == 0:
+            return 0.0
+        return ascii_letters / total_letters
+
+    def _unique_preserve_order(self, items):
+        result = []
+        seen = set()
+
+        for item in items:
+            normalized = self._clean(item)
+            lowered = normalized.lower()
+            if not normalized or lowered in seen:
                 continue
-            cleaned_tokens.append(stripped)
+            seen.add(lowered)
+            result.append(normalized)
 
-        cleaned_tokens = self._unique_preserve_order(cleaned_tokens)
-        if len(cleaned_tokens) > 6:
-            cleaned_tokens = cleaned_tokens[:6]
-
-        marketing_name = " ".join(cleaned_tokens)
-        marketing_name = self._collapse_whitespace(marketing_name)
-        return marketing_name or "اختيار عملي"
-
-    def _normalize_category_text(self, value):
-        text = self._strip_system_phrases(value)
-        text = re.sub(r"[_|/]+", " ", text)
-        return self._collapse_whitespace(text)
-
-    def _join_non_empty(self, values, delimiter=" "):
-        return delimiter.join([self._clean(value) for value in values if self._clean(value)])
-
-    def _checksum(self, text):
-        normalized = self._clean(text)
-        return sum(ord(ch) for ch in normalized)
-
-    def _pick_variant(self, options, seed_text):
-        valid_options = [item for item in options if self._clean(item)]
-        if not valid_options:
-            return ""
-        index = self._checksum(seed_text) % len(valid_options)
-        return valid_options[index]
+        return result
 
     def _count_occurrences(self, text, term):
         if not self._clean(text) or not self._clean(term):
@@ -504,6 +541,7 @@ class SEOService:
 
         pattern = re.compile(re.escape(cleaned_name), flags=re.IGNORECASE)
         matches = list(pattern.finditer(cleaned_text))
+
         if len(matches) <= max_occurrences:
             return cleaned_text
 
@@ -530,6 +568,7 @@ class SEOService:
 
     def _sanitize_text(self, text, product_name="", max_length=600):
         cleaned = self._strip_system_phrases(text)
+        cleaned = self._translate_known_english(cleaned)
         cleaned = self._remove_excess_name_repetition(cleaned, product_name, max_occurrences=1)
         cleaned = re.sub(r"\s+\n", "\n", cleaned)
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
@@ -537,6 +576,50 @@ class SEOService:
         cleaned = self._collapse_whitespace(cleaned.replace(" \n", "\n"))
         cleaned = self._truncate_safely(cleaned, max_length)
         return cleaned
+
+    def _normalize_product_name(self, value):
+        text = self._strip_system_phrases(value)
+        text = self._translate_known_english(text)
+        text = re.sub(r"[-–—]+", " ", text)
+
+        tokens = self._split_words(text)
+        cleaned_tokens = []
+
+        for token in tokens:
+            stripped = re.sub(r"[^\w\u0600-\u06FF]+", "", token)
+            if not stripped:
+                continue
+            if len(stripped) > 16:
+                continue
+            if re.search(r"\d", stripped) and len(stripped) > 6:
+                continue
+            cleaned_tokens.append(stripped)
+
+        cleaned_tokens = self._unique_preserve_order(cleaned_tokens)
+
+        arabic_tokens = [token for token in cleaned_tokens if self._contains_arabic(token)]
+        if len(arabic_tokens) >= 2:
+            cleaned_tokens = arabic_tokens[:4]
+        else:
+            cleaned_tokens = cleaned_tokens[:4]
+
+        marketing_name = " ".join(cleaned_tokens)
+        marketing_name = self._collapse_whitespace(marketing_name)
+
+        if not marketing_name or self._contains_long_raw_token(marketing_name):
+            return "اختيار عملي"
+
+        return marketing_name
+
+    def _normalize_category_text(self, value):
+        text = self._strip_system_phrases(value)
+        text = self._translate_known_english(text)
+        text = re.sub(r"[_|/]+", " ", text)
+        return self._collapse_whitespace(text)
+
+    def _normalize_price_text(self, value):
+        price_text = self._clean(value)
+        return price_text or "السعر متوفر"
 
     def _normalize_keywords(self, values):
         items = []
@@ -553,13 +636,16 @@ class SEOService:
 
         for item in items:
             normalized = self._strip_system_phrases(item)
+            normalized = self._translate_known_english(normalized)
             normalized = re.sub(r"[#]+", "", normalized)
             normalized = self._collapse_whitespace(normalized)
+
             if not normalized:
                 continue
-
-            if len(normalized) > 28:
-                normalized = self._truncate_safely(normalized, 28).rstrip(".")
+            if self._contains_long_raw_token(normalized):
+                continue
+            if self._english_ratio(normalized) > 0.45:
+                continue
 
             lowered = normalized.lower()
             if lowered in seen:
@@ -585,17 +671,14 @@ class SEOService:
 
         for item in items:
             normalized = self._strip_system_phrases(item)
+            normalized = self._translate_known_english(normalized)
             normalized = normalized.replace(" ", "_").replace(",", "").replace("،", "")
             normalized = normalized.lstrip("#")
             normalized = re.sub(r"[^0-9A-Za-z_\u0600-\u06FF]+", "", normalized)
 
             if not normalized:
                 continue
-
-            if len(normalized) > 24:
-                normalized = normalized[:24].rstrip("_")
-
-            if not normalized:
+            if len(normalized) > 18:
                 continue
 
             tag = "#" + normalized
@@ -624,10 +707,6 @@ class SEOService:
             return json.loads(candidate)
         except Exception:
             return None
-
-    def _normalize_price_text(self, value):
-        price_text = self._clean(value)
-        return price_text or "السعر متوفر عند الطلب"
 
     def infer_strategy_hint(self, product_name, category_id):
         searchable_text = self._join_non_empty([product_name, category_id], delimiter=" ").lower()
@@ -665,13 +744,13 @@ class SEOService:
     def _strengthen_cta(self, cta, strategy_profile, seed_text):
         short_forms = strategy_profile.get("cta_short_forms") or []
         fallback_cta = self._pick_variant(short_forms, seed_text + "|cta_short")
-        candidate = self._sanitize_text(cta or fallback_cta, max_length=55)
+        candidate = self._sanitize_text(cta or fallback_cta, max_length=38)
 
         if not candidate:
             candidate = fallback_cta or "اطلبه الآن"
 
-        if len(candidate) > 55:
-            candidate = self._truncate_safely(candidate, 55)
+        if len(candidate) > 38:
+            candidate = self._truncate_safely(candidate, 38)
 
         return candidate
 
@@ -712,7 +791,6 @@ class SEOService:
         keyword_candidates = [
             clean_name,
             clean_category,
-            strategy_profile["display_name"],
             *strategy_profile["keyword_stems"],
         ]
 
@@ -751,10 +829,14 @@ class SEOService:
 
     def _compose_marketing_title(self, brief):
         title = self._render_template(brief["title_template"], brief)
-        title = self._sanitize_text(title, product_name=brief["product_name"], max_length=self.MAX_TITLE_LENGTH)
+        title = self._sanitize_text(
+            title,
+            product_name=brief["product_name"],
+            max_length=self.MAX_TITLE_LENGTH,
+        )
         words = self._split_words(title)
-        if len(words) > 8:
-            title = self._truncate_safely(" ".join(words[:8]), self.MAX_TITLE_LENGTH)
+        if len(words) > 7:
+            title = self._truncate_safely(" ".join(words[:7]), self.MAX_TITLE_LENGTH)
         return title
 
     def _compose_marketing_description(self, brief):
@@ -772,9 +854,10 @@ class SEOService:
 
     def _compose_social_post(self, brief, seo_hashtags):
         lines = [
-            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=110),
-            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=120),
-            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=55),
+            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=80),
+            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=90),
+            f"السعر: {brief['manual_price']}",
+            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=38),
             seo_hashtags,
         ]
         return "\n".join([line for line in lines if self._clean(line)])
@@ -784,7 +867,11 @@ class SEOService:
         clean_lines = []
 
         for line in raw_lines:
-            sanitized = self._sanitize_text(line, product_name=brief["product_name"], max_length=120)
+            sanitized = self._sanitize_text(
+                line,
+                product_name=brief["product_name"],
+                max_length=90,
+            )
             if sanitized:
                 clean_lines.append(sanitized)
 
@@ -792,8 +879,8 @@ class SEOService:
 
         if not clean_lines:
             clean_lines = [
-                self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=110),
-                self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=120),
+                self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=80),
+                self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=90),
             ]
 
         condensed = []
@@ -803,7 +890,7 @@ class SEOService:
 
         benefit_line = None
         for line in clean_lines[1:]:
-            if brief["cta"] not in line and not line.startswith("#"):
+            if brief["cta"] not in line and not line.startswith("#") and not line.startswith("السعر:"):
                 benefit_line = line
                 break
 
@@ -811,21 +898,16 @@ class SEOService:
             benefit_line = self._sanitize_text(
                 self._render_template(brief["desire_line"], brief),
                 product_name=brief["product_name"],
-                max_length=120,
+                max_length=85,
             )
 
         condensed.append(benefit_line)
-        condensed.append(self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=55))
+        condensed.append(f"السعر: {brief['manual_price']}")
+        condensed.append(self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=38))
         condensed.append(seo_hashtags)
 
         final_post = "\n".join([line for line in condensed if self._clean(line)])
         return self._truncate_safely(final_post, self.MAX_SOCIAL_LENGTH)
-
-    def _has_raw_long_chunk(self, text):
-        for token in self._split_words(text):
-            if len(token) > 28:
-                return True
-        return False
 
     def _validate_quality(self, payload, brief):
         title = self._clean(payload.get("marketing_title"))
@@ -842,16 +924,19 @@ class SEOService:
         if len(title) > self.MAX_TITLE_LENGTH:
             return False, "Quality gate rejected: MarketingTitle is too long"
 
-        if len(self._split_words(title)) > 8:
-            return False, "Quality gate rejected: MarketingTitle is too long structurally"
+        if len(self._split_words(title)) > 7:
+            return False, "Quality gate rejected: MarketingTitle is still too long"
 
-        if self._has_raw_long_chunk(title):
+        if self._contains_long_raw_token(title):
             return False, "Quality gate rejected: MarketingTitle still looks raw"
+
+        if self._english_ratio(title) > 0.25:
+            return False, "Quality gate rejected: MarketingTitle contains too much English"
 
         if not description:
             return False, "Quality gate rejected: MarketingDescription is empty"
 
-        if self._has_raw_long_chunk(description):
+        if self._contains_long_raw_token(description):
             return False, "Quality gate rejected: MarketingDescription contains raw long strings"
 
         if not social_post:
@@ -859,6 +944,12 @@ class SEOService:
 
         if len(social_post) > self.MAX_SOCIAL_LENGTH:
             return False, "Quality gate rejected: SocialPost is too long"
+
+        if self._contains_long_raw_token(social_post):
+            return False, "Quality gate rejected: SocialPost still contains raw long strings"
+
+        if self._english_ratio(social_post) > 0.28:
+            return False, "Quality gate rejected: SocialPost contains too much English"
 
         if cta and cta not in social_post:
             return False, "Quality gate rejected: CTA is missing from SocialPost"
@@ -873,6 +964,9 @@ class SEOService:
         if not keywords:
             return False, "Quality gate rejected: SEOKeywords is empty"
 
+        if self._contains_long_raw_token(keywords):
+            return False, "Quality gate rejected: SEOKeywords still contain raw long strings"
+
         if self._count_occurrences(title, product_name) > 1:
             return False, "Quality gate rejected: product name repeats too much in title"
 
@@ -883,11 +977,14 @@ class SEOService:
             return False, "Quality gate rejected: product name repeats too much in SocialPost"
 
         for phrase in self.BANNED_SYSTEM_PHRASES:
-            if phrase and phrase.lower() in title.lower():
+            if not phrase:
+                continue
+            lowered_phrase = phrase.lower()
+            if lowered_phrase in title.lower():
                 return False, "Quality gate rejected: MarketingTitle still contains raw/system wording"
-            if phrase and phrase.lower() in description.lower():
+            if lowered_phrase in description.lower():
                 return False, "Quality gate rejected: MarketingDescription still contains raw/system wording"
-            if phrase and phrase.lower() in social_post.lower():
+            if lowered_phrase in social_post.lower():
                 return False, "Quality gate rejected: SocialPost still contains raw/system wording"
 
         return True, ""
@@ -963,7 +1060,7 @@ class SEOService:
 
         return f"""
 أنت Senior Arabic Direct Response Copywriter.
-المطلوب كتابة commercial copy عربي احترافي جدًا، بشري، مقنع، مناسب للنشر المباشر، وقابل للتحويل.
+المطلوب كتابة retail-grade commercial copy عربي احترافي، قصير، بشري، مناسب لإعلان متجر حقيقي.
 
 الاستراتيجية:
 - Strategy: {brief["strategy_name"]}
@@ -975,9 +1072,8 @@ class SEOService:
 - CategoryID: {brief["category_id"]}
 - ManualPrice: {brief["manual_price"]}
 - FinalMediaPresent: {"yes" if brief["final_media_present"] else "no"}
-- FinalMediaStatus: {brief["final_media_status"]}
 
-المحاور التجارية:
+المحاور:
 - Hook: {brief["hook"]}
 - Pain: {brief["pain_line"]}
 - Solution: {brief["solution_line"]}
@@ -989,14 +1085,14 @@ SEO hints:
 - Hashtags: {hashtag_candidates}
 
 قواعد صارمة:
-- لا تستخدم wording تشغيلي أو إداري أو آلي
-- لا تستخدم: selected / approved / ready / finalized / Trend Yemen / home
-- لا تكرر اسم المنتج بشكل خام أو ممل
-- اجعل MarketingTitle قصيرة وقوية
-- اجعل MarketingDescription مقنعة وواضحة
-- اجعل SocialPost قصيرة نسبيًا وقابلة للتحويل
-- اجعل CTA مباشرة وقوية
-- اجعل hashtags نظيفة ومحدودة
+- اجعل العنوان عربيًا، قصيرًا، ويبدو كعنوان إعلان متجر
+- قلّل الإنجليزية قدر الإمكان
+- لا تستخدم wording تشغيلي أو إداري أو raw
+- لا تكرر اسم المنتج بشكل خام
+- اجعل SocialPost قصيرة، بشرية، وتحويلية
+- اجعل CTA مباشرة وغير مبتذلة
+- اجعل Keywords نظيفة وقابلة للبحث
+- اجعل Hashtags قليلة، قوية، ونظيفة
 - لا تغيّر السعر
 - لا تضف أي شرح خارج JSON
 
@@ -1072,7 +1168,7 @@ SEO hints:
 
             merged = self._merge_ai_payload_with_brief(parsed, brief, fallback)
             system_log.info(
-                f"✅ Commercial content generated for: {brief['product_name']} | strategy={brief['strategy_key']}"
+                f"✅ Retail-grade content generated for: {brief['product_name']} | strategy={brief['strategy_key']}"
             )
             return merged
 
