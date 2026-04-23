@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from google import genai
 from monitoring.logger import system_log
@@ -43,83 +44,83 @@ class SEOService:
     STRATEGY_LIBRARY = {
         "health_pain_relief": {
             "display_name": "Health / Pain relief",
-            "tone": "مطمئن، واثق، عملي، ويعطي إحساسًا بالراحة من أول سطر.",
-            "instagram_format": "Hook → Relief benefit → Practical usage angle → CTA → Hashtags",
+            "tone_rules": "عربي راقٍ، مطمئن، مقنع، عملي، بعيد عن المبالغة واللغة الطبية الثقيلة.",
+            "instagram_format": "Hook -> Relief -> Desire -> CTA -> Hashtags",
             "hook_templates": [
-                "إذا كان الانزعاج اليومي يسرق راحتك، هذا هو الفرق الذي ستشعر به.",
-                "الراحة ليست رفاهية عندما يكون يومك مليئًا بالحركة والجهد.",
-                "حين يصبح التعب جزءًا من يومك، تحتاج حلًا يمنحك راحة واضحة.",
-                "ابدأ يومك بإحساس أخف وراحة تلمسها من الاستخدام الأول.",
+                "إذا كان الانزعاج اليومي يأخذ من راحتك، فهذا النوع من الحلول يصنع فرقًا واضحًا.",
+                "الراحة الحقيقية تبدأ عندما تختار ما يخفف عنك العبء اليومي.",
+                "حين يتحول التعب إلى عادة يومية، يصبح الحل العملي ضرورة لا رفاهية.",
+                "امنح يومك إحساسًا أخف وراحة أوضح من أول استخدام.",
+            ],
+            "pain_lines": [
+                "كثير من الناس يتعاملون يوميًا مع توتر أو إجهاد يستهلك الراحة والتركيز.",
+                "الانزعاج المتكرر يجعل أبسط المهام أثقل مما يجب.",
+                "حين يطول الإحساس بعدم الراحة، يبدأ أثره على جودة اليوم كله.",
+            ],
+            "solution_lines": [
+                "{product_name} يقدم طريقة أكثر راحة وعملية لدعم يومك بدون تعقيد.",
+                "{product_name} يساعدك على جعل الاستخدام اليومي أكثر راحة وانسيابية.",
+                "{product_name} صُمم ليمنحك تجربة مريحة وواضحة الأثر من الاستخدام الأول.",
+            ],
+            "desire_lines": [
+                "النتيجة هي إحساس أفضل بالحركة وراحة أكثر في تفاصيل يومك.",
+                "الفرق الحقيقي أنه يضيف إلى روتينك راحة تشعر بها وثقة أكبر في الاستخدام.",
+                "هذا النوع من الاختيارات يمنحك هدوءًا أكبر وقدرة أفضل على الاستمرار في يومك.",
+            ],
+            "cta_templates": [
+                "اطلبه الآن وابدأ فرق الراحة من اليوم.",
+                "جرّبه اليوم وخفف العبء عن يومك بخطوة بسيطة.",
+                "ابدأ من الآن بخيار يمنحك راحة أوضح كل يوم.",
             ],
             "title_templates": [
                 "{product_name} | راحة أوضح ليوم أخف",
                 "{product_name} | حل عملي للراحة اليومية",
                 "{product_name} | فرق تشعر به مع كل استخدام",
             ],
-            "description_formulas": [
-                "مصمم لمن يبحث عن تخفيف الإزعاج اليومي واستعادة راحته بأسلوب عملي. {product_name} يمنحك تجربة أكثر راحة وثقة، ويجعل الاستخدام اليومي أبسط وأهدأ.",
-                "عندما يتحول الانزعاج إلى عبء يومي، يصبح الحل العملي ضرورة. {product_name} يساعدك على الانتقال من التعب المستمر إلى إحساس أوضح بالراحة والانسيابية.",
-                "إذا كنت تبحث عن وسيلة مريحة تدعم يومك وتخفف الضغط المتكرر، فإن {product_name} يقدم زاوية استخدام ذكية ومريحة تناسب الروتين اليومي.",
-            ],
-            "benefit_lines": [
-                "راحة أسرع، استخدام أسهل، وإحساس أفضل مع كل مرة.",
-                "يدعم يومك براحة أوضح ويخفف الإزعاج الذي يستهلك طاقتك.",
-                "خيار عملي لكل من يريد راحة محسوسة بدون تعقيد.",
-            ],
-            "angle_lines": [
-                "مثالي للاستخدام اليومي لمن يريد فرقًا واضحًا في الراحة.",
-                "يعطيك إحساسًا أفضل أثناء الروتين اليومي المزدحم.",
-                "مناسب لمن يبحث عن حل مريح وعملي بدل الاستمرار مع نفس الإزعاج.",
-            ],
-            "cta_templates": [
-                "اطلبه الآن وابدأ فرق الراحة من اليوم.",
-                "جرّبه اليوم وخفف العبء عن يومك خطوة بخطوة.",
-                "امنح نفسك راحة تستحقها وابدأ من الآن.",
-            ],
             "keyword_stems": [
-                "راحة يومية", "تخفيف الانزعاج", "حل عملي", "استخدام مريح", "منتج صحي", "راحة أفضل",
+                "راحة يومية", "تخفيف الانزعاج", "حل عملي", "استخدام مريح", "راحة أفضل", "اختيار ذكي",
             ],
             "hashtag_stems": [
-                "راحة", "صحة", "يومك_أخف", "حل_عملي", "منتجات_مميزة",
+                "راحة", "صحة", "يومك_أخف", "حل_عملي", "اختيار_أفضل",
             ],
         },
         "beauty": {
             "display_name": "Beauty",
-            "tone": "راقٍ، أنثوي أو جمالي، ويعطي إحساسًا بالثقة والإشراقة.",
-            "instagram_format": "Hook → Confidence benefit → Beauty angle → CTA → Hashtags",
+            "tone_rules": "عربي أنيق، واثق، جمالي، غير مبتذل، يركز على الإشراقة والثقة.",
+            "instagram_format": "Hook -> Beauty benefit -> Confidence angle -> CTA -> Hashtags",
             "hook_templates": [
-                "تفاصيل الجمال الصغيرة هي التي تصنع حضورك الحقيقي.",
-                "حين تهتمين بنفسك بالطريقة الصحيحة، يظهر الفرق بسرعة.",
-                "إشراقتك تبدأ من اختيار يمنحك ثقة أكثر كل يوم.",
-                "لمسة واحدة مدروسة كفيلة بأن تغيّر إحساسك بنفسك.",
+                "الفرق في الإطلالة يبدأ من العناية التي تعكس حضورك الحقيقي.",
+                "حين تختارين العناية الصحيحة، يظهر أثرها في التفاصيل الجميلة.",
+                "الإشراقة ليست صدفة، بل نتيجة اختيار يمنحك إحساسًا أجمل بنفسك.",
+                "الجمال الأجمل هو الذي يبدو طبيعيًا ويترك أثرًا واثقًا.",
+            ],
+            "pain_lines": [
+                "روتين العناية العادي لا يمنح دائمًا النتيجة التي تشعرين معها بالرضا الكامل.",
+                "أحيانًا يكون المطلوب لمسة مدروسة لا تغييرًا مبالغًا فيه.",
+                "حين تغيب النتيجة الواضحة، يصبح الجمال أقل تعبيرًا عن حضورك الحقيقي.",
+            ],
+            "solution_lines": [
+                "{product_name} يمنحك تجربة عناية أجمل وأكثر نعومة في الإحساس والنتيجة.",
+                "{product_name} يضيف إلى روتينك لمسة أنيقة تعزز الجمال الطبيعي بثقة.",
+                "{product_name} صُمم ليمنحك حضورًا أجمل دون تكلف أو مبالغة.",
+            ],
+            "desire_lines": [
+                "النتيجة هي إشراقة أوضح وثقة أكثر في كل إطلالة.",
+                "هذا النوع من المنتجات يجعل العناية اليومية أكثر متعة وأقرب للنتيجة التي ترغبين بها.",
+                "يعطيك إحساسًا بالجمال المرتب والحضور الأنيق في كل مرة.",
+            ],
+            "cta_templates": [
+                "امنحي نفسك لمسة أجمل اليوم.",
+                "اختاري الجمال الذي يليق بك وابدئي من الآن.",
+                "دلّلي نفسك بخيار يمنحك إشراقة وثقة أكثر.",
             ],
             "title_templates": [
                 "{product_name} | لمسة جمال بثقة أعلى",
                 "{product_name} | إشراقة أجمل كل يوم",
                 "{product_name} | عناية تبرز جمالك الطبيعي",
             ],
-            "description_formulas": [
-                "{product_name} يمنحك إحساسًا أجمل بالعناية اليومية، ويضيف لمسة أناقة وثقة تظهر في التفاصيل. اختيار مناسب لمن تريد نتيجة أنعم، أرقى، وأكثر حضورًا.",
-                "إذا كنتِ تبحثين عن عناية تمنحك إشراقة أوضح وثقة أكثر، فإن {product_name} يقدم تجربة مريحة وجذابة تناسب روتينك اليومي.",
-                "من العناية العادية إلى إحساس أجمل بالمظهر والثقة، يأتي {product_name} كخيار ذكي يعزز حضورك ويلفت الانتباه بطريقة ناعمة.",
-            ],
-            "benefit_lines": [
-                "إشراقة أوضح وثقة أكبر في إطلالتك اليومية.",
-                "عناية تبرز جمالك بأسلوب أنيق وغير مبالغ فيه.",
-                "لمسة عملية تمنحك حضورًا أجمل ونتيجة أحبّ إلى النفس.",
-            ],
-            "angle_lines": [
-                "مناسب لروتين يومي يوازن بين الجمال والعملية.",
-                "اختيار جميل لمن تحب التفاصيل المرتبة والإحساس الراقي.",
-                "يمنحك نتيجة تبدو طبيعية ومحببة من أول استخدام.",
-            ],
-            "cta_templates": [
-                "امنحي نفسك لمسة أجمل اليوم.",
-                "اختاري الجمال الذي يليق بك وابدئي من الآن.",
-                "دلّلي نفسك بخيار يمنحك حضورًا أجمل وثقة أكبر.",
-            ],
             "keyword_stems": [
-                "عناية يومية", "إشراقة", "ثقة", "جمال", "منتج تجميلي", "روتين عناية",
+                "عناية يومية", "إشراقة", "ثقة", "جمال", "روتين عناية", "نتيجة أنيقة",
             ],
             "hashtag_stems": [
                 "جمال", "عناية", "إشراقة", "ثقة", "روتين_جمال",
@@ -127,41 +128,41 @@ class SEOService:
         },
         "home_convenience": {
             "display_name": "Home convenience",
-            "tone": "عملي، ذكي، مريح، ويعد بتوفير الوقت والجهد.",
-            "instagram_format": "Hook → Convenience benefit → Home angle → CTA → Hashtags",
+            "tone_rules": "عربي عملي، ذكي، مرتب، يركز على السهولة وتوفير الوقت والجهد.",
+            "instagram_format": "Hook -> Convenience benefit -> Home angle -> CTA -> Hashtags",
             "hook_templates": [
-                "الأشياء الذكية في البيت ليست رفاهية عندما تصنع فرقًا يوميًا.",
-                "كلما صار البيت أسهل، صار يومك أخف وأهدأ.",
-                "الحل البسيط الذي يختصر عليك وقتًا وجهدًا كل يوم.",
-                "من الفوضى أو الإزعاج إلى ترتيب وراحة أكثر في خطوة واحدة.",
+                "الأشياء التي تجعل البيت أسهل هي غالبًا الأفضل قيمة في الاستخدام اليومي.",
+                "حين تصبح التفاصيل المنزلية أبسط، يصبح يومك كله أخف.",
+                "الحل العملي هو الذي يختصر عليك الجهد من أول مرة.",
+                "من الفوضى أو الإزعاج إلى راحة أوضح بخطوة واحدة.",
+            ],
+            "pain_lines": [
+                "التفاصيل الصغيرة في البيت قد تستهلك وقتًا وجهدًا أكثر مما تستحق.",
+                "حين يكون الروتين اليومي مرهقًا، تصبح الحلول العملية أكثر أهمية من أي وقت.",
+                "الإزعاج المتكرر داخل البيت يجعل أبسط المهام أقل راحة مما يجب.",
+            ],
+            "solution_lines": [
+                "{product_name} صُمم ليجعل الاستخدام اليومي أسهل وأكثر ترتيبًا وراحة.",
+                "{product_name} يمنحك طريقة أذكى للتعامل مع الروتين اليومي داخل البيت.",
+                "{product_name} يضيف إلى يومك سهولة واضحة ويوفر عليك جهدًا متكررًا.",
+            ],
+            "desire_lines": [
+                "النتيجة هي يوم أكثر ترتيبًا، وجهد أقل، وراحة أكبر في التفاصيل.",
+                "هذا النوع من الخيارات يعطي البيت إحساسًا أفضل بالسهولة والتنظيم.",
+                "كل استخدام يمنحك شعورًا أن يومك صار أبسط وأخف.",
+            ],
+            "cta_templates": [
+                "خففي الجهد وخلّي يومك أسهل من الآن.",
+                "اختاري الحل العملي الذي يريحك كل يوم.",
+                "ابدئي اليوم بخيار يختصر عليك الوقت والجهد.",
             ],
             "title_templates": [
                 "{product_name} | راحة أكثر في يومك",
                 "{product_name} | حل منزلي عملي وذكي",
                 "{product_name} | سهولة يومية بلمسة ذكية",
             ],
-            "description_formulas": [
-                "{product_name} صُمم ليحوّل التفاصيل المزعجة في البيت إلى تجربة أسهل وأكثر ترتيبًا. عملي، مريح، ويمنحك وقتًا وجهدًا أقل مع نتيجة أوضح.",
-                "إذا كنت تبحث عن طريقة أذكى لتسهيل يومك داخل المنزل، فإن {product_name} يقدم راحة عملية تساعدك على إنجاز أكثر بجهد أقل.",
-                "من الإزعاج اليومي إلى السهولة والتنظيم، يأتي {product_name} كخيار يريحك ويجعل الروتين المنزلي أكثر بساطة وأناقة.",
-            ],
-            "benefit_lines": [
-                "يوفر وقتك ويخفف الجهد في الاستخدام اليومي.",
-                "يجعل التفاصيل المنزلية أسهل وأكثر ترتيبًا.",
-                "اختيار عملي يضيف راحة واضحة داخل البيت.",
-            ],
-            "angle_lines": [
-                "مثالي للروتين اليومي الذي يحتاج حلولًا بسيطة وفعالة.",
-                "مناسب لكل من يحب البيت المرتب والتعامل الأسهل مع التفاصيل.",
-                "فكرة عملية توفر عليك تعبًا متكررًا في اليوم.",
-            ],
-            "cta_templates": [
-                "خففي الجهد وخلّي يومك أسهل من الآن.",
-                "جرّبيه اليوم واستمتعي براحة أوضح في البيت.",
-                "اختاري الحل العملي الذي يختصر عليك الكثير.",
-            ],
             "keyword_stems": [
-                "راحة منزلية", "تنظيم", "حل عملي", "توفير وقت", "منتج منزلي", "سهولة يومية",
+                "راحة منزلية", "تنظيم", "حل عملي", "توفير وقت", "سهولة يومية", "استخدام ذكي",
             ],
             "hashtag_stems": [
                 "منزل", "راحة_منزلية", "تنظيم", "حل_عملي", "يومك_أسهل",
@@ -169,41 +170,41 @@ class SEOService:
         },
         "gadget": {
             "display_name": "Gadget",
-            "tone": "حديث، سريع، ذكي، ويبرز العملية والقيمة.",
-            "instagram_format": "Hook → Smart benefit → Tech angle → CTA → Hashtags",
+            "tone_rules": "عربي حديث، واثق، سريع الإيقاع، يركز على الذكاء والعملية والقيمة.",
+            "instagram_format": "Hook -> Smart value -> Practical angle -> CTA -> Hashtags",
             "hook_templates": [
-                "الحل الذكي هو الذي يختصر عليك الوقت من أول استخدام.",
-                "التفاصيل التقنية الصغيرة تصنع فرقًا كبيرًا في يومك.",
-                "لما يكون المنتج عمليًا وذكيًا، تعرف أن اختيارك كان في مكانه.",
-                "أداء أفضل وراحة أكثر في أداة واحدة.",
+                "الحل الأذكى هو الذي يختصر عليك الوقت من أول استخدام.",
+                "أحيانًا أداة واحدة عملية تغيّر طريقة يومك بالكامل.",
+                "حين يجتمع الذكاء والسهولة في منتج واحد، يصبح القرار أسهل.",
+                "التفاصيل التقنية الأفضل هي التي تشعر بقيمتها فورًا.",
+            ],
+            "pain_lines": [
+                "الأدوات التقليدية لا تمنح دائمًا السرعة أو السهولة التي يحتاجها يومك.",
+                "حين يكون الاستخدام معقدًا، تضيع القيمة مهما بدا المنتج جيدًا.",
+                "الروتين الأسرع يحتاج حلولًا أذكى لا خطوات إضافية.",
+            ],
+            "solution_lines": [
+                "{product_name} يقدم تجربة عملية وذكية تمنحك أداءً أسهل وأكثر سلاسة.",
+                "{product_name} يجمع بين العملية والسرعة بطريقة تناسب الاستخدام اليومي.",
+                "{product_name} صُمم ليضيف قيمة واضحة ونتيجة ملموسة من أول تجربة.",
+            ],
+            "desire_lines": [
+                "النتيجة هي استخدام أسرع، إحساس أفضل بالعملية، وراحة أكبر في التفاصيل.",
+                "هذا النوع من المنتجات يمنحك شعورًا أنك اخترت الحل الأذكى فعلًا.",
+                "الفائدة الحقيقية هنا أنك تحصل على قيمة واضحة بدون تعقيد.",
+            ],
+            "cta_templates": [
+                "جرّب الحل الأذكى اليوم.",
+                "ابدأ تجربة أكثر عملية من الآن.",
+                "اختر الأداة التي تمنحك قيمة أوضح من أول استخدام.",
             ],
             "title_templates": [
                 "{product_name} | الحل الأذكى ليومك",
                 "{product_name} | تقنية عملية بشكل أبسط",
                 "{product_name} | أداء ذكي بقيمة أعلى",
             ],
-            "description_formulas": [
-                "{product_name} يقدم لك تجربة أكثر ذكاءً وعملية، ويجمع بين السهولة والأداء في استخدام يومي مريح. مناسب لمن يحب الحلول السريعة والواضحة.",
-                "إذا كنت تبحث عن أداة تجعل يومك أسرع وأكثر سلاسة، فإن {product_name} يمنحك زاوية استخدام ذكية وعملية من أول تجربة.",
-                "من التعقيد إلى السهولة، ومن البطء إلى العملية، يأتي {product_name} ليمنحك قيمة واضحة في كل استخدام.",
-            ],
-            "benefit_lines": [
-                "أداء عملي، تجربة أسهل، واستخدام يواكب يومك.",
-                "أداة ذكية تضيف راحة وسرعة إلى روتينك اليومي.",
-                "مناسبة لمن يريد نتيجة واضحة بدون تعقيد.",
-            ],
-            "angle_lines": [
-                "تصميم عملي يناسب الاستخدام المتكرر واليومي.",
-                "خيار مناسب لمن يقدّر الأداء وسهولة الاستخدام معًا.",
-                "فكرة ذكية تعطيك قيمة حقيقية من أول مرة.",
-            ],
-            "cta_templates": [
-                "جرّب الحل الأذكى اليوم.",
-                "اختر الأداة العملية التي تسهّل يومك الآن.",
-                "ابدأ تجربة أكثر ذكاءً من الآن.",
-            ],
             "keyword_stems": [
-                "أداة ذكية", "تقنية عملية", "حل سريع", "منتج إلكتروني", "أداء عملي", "استخدام يومي",
+                "أداة ذكية", "تقنية عملية", "حل سريع", "منتج إلكتروني", "أداء عملي", "قيمة واضحة",
             ],
             "hashtag_stems": [
                 "تقنية", "أداة_ذكية", "حل_أذكى", "عملي", "منتجات_تقنية",
@@ -211,38 +212,38 @@ class SEOService:
         },
         "fitness": {
             "display_name": "Fitness",
-            "tone": "مُلهم، منظم، مشجع على الالتزام والتقدّم.",
-            "instagram_format": "Hook → Motivation benefit → Fitness angle → CTA → Hashtags",
+            "tone_rules": "عربي محفّز، منظم، مشجع على الالتزام والتقدّم، بعيد عن الصراخ التسويقي.",
+            "instagram_format": "Hook -> Motivation -> Progress angle -> CTA -> Hashtags",
             "hook_templates": [
-                "النتائج تبدأ من قرار صغير تلتزم به كل يوم.",
-                "إذا كنت تريد بداية أقوى، ابدأ بخطوة عملية اليوم.",
-                "من الكسل إلى النشاط... الفرق يبدأ باختيار صحيح.",
-                "كل تقدم حقيقي يبدأ بأداة تدعمك على الاستمرار.",
+                "النتيجة تبدأ من قرار صغير تلتزم به كل يوم.",
+                "إذا كنت تريد بداية أقوى، ابدأ بأداة تدعمك فعليًا.",
+                "من الكسل إلى النشاط، الفرق يبدأ باختيار صحيح.",
+                "كل تقدّم واضح يحتاج بداية عملية ومستمرة.",
             ],
-            "title_templates": [
-                "{product_name} | بداية أقوى لنتيجة أوضح",
-                "{product_name} | خيار عملي لنشاطك اليومي",
-                "{product_name} | التزام أسهل ونتيجة أقرب",
+            "pain_lines": [
+                "أكبر تحدٍ في أي بداية ليس الحماس فقط، بل الاستمرار بثبات.",
+                "حين يغيب التنظيم أو الدعم العملي، تصبح البداية أصعب مما يجب.",
+                "الرغبة وحدها لا تكفي إذا لم يكن معك ما يساعدك على الالتزام.",
             ],
-            "description_formulas": [
-                "{product_name} يساعدك على جعل روتينك أكثر التزامًا وفعالية، ويمنحك إحساسًا بالنشاط والقدرة على الاستمرار. مناسب لمن يريد بداية عملية ونتيجة أوضح مع الوقت.",
-                "إذا كان هدفك تحسين نشاطك اليومي أو دعم تمرينك بشكل أذكى، فإن {product_name} يقدم لك نقطة بداية مريحة ومحفزة.",
-                "من التردد إلى الالتزام، ومن البداية المتقطعة إلى الاستمرار، يأتي {product_name} كأداة عملية تدعم تقدمك بشكل أفضل.",
+            "solution_lines": [
+                "{product_name} يساعدك على جعل روتينك أكثر التزامًا ووضوحًا من البداية.",
+                "{product_name} يضيف إلى يومك عاملًا عمليًا يشجّعك على الاستمرار.",
+                "{product_name} صُمم ليمنحك بداية أسهل وشعورًا أفضل بالتقدّم.",
             ],
-            "benefit_lines": [
-                "يشجعك على الالتزام ويجعل خطوتك الأولى أسهل.",
-                "مناسب لروتين نشيط أكثر وتنظيم أفضل لرحلتك.",
-                "خيار عملي لمن يريد نتيجة تبدأ من عادة يومية ثابتة.",
-            ],
-            "angle_lines": [
-                "مثالي لمن يريد دعمًا عمليًا للنشاط والالتزام.",
-                "يدخل بسهولة في روتينك اليومي بدون تعقيد.",
-                "يمنحك دفعة بداية جيدة نحو أسلوب حياة أكثر نشاطًا.",
+            "desire_lines": [
+                "النتيجة هي إحساس أقوى بالنشاط وخطوة أوضح نحو هدفك.",
+                "هذا النوع من المنتجات يجعل الالتزام أسهل والرحلة أكثر واقعية.",
+                "يعطيك دفعة عملية نحو عادة أفضل ونتيجة أقرب مما تتوقع.",
             ],
             "cta_templates": [
                 "ابدأ التغيير من الآن.",
                 "خذ أول خطوة اليوم وخلّي الالتزام أسهل.",
                 "جرّبه اليوم وابدأ رحلة نشاط أقوى.",
+            ],
+            "title_templates": [
+                "{product_name} | بداية أقوى لنتيجة أوضح",
+                "{product_name} | خيار عملي لنشاطك اليومي",
+                "{product_name} | التزام أسهل ونتيجة أقرب",
             ],
             "keyword_stems": [
                 "لياقة", "نشاط", "تمرين", "التزام", "نتيجة أفضل", "روتين رياضي",
@@ -253,89 +254,106 @@ class SEOService:
         },
         "kids_family": {
             "display_name": "Kids / family",
-            "tone": "مطمئن، عائلي، عملي، ويركز على الراحة اليومية.",
-            "instagram_format": "Hook → Family benefit → Trust angle → CTA → Hashtags",
+            "tone_rules": "عربي مطمئن، عائلي، عملي، يركز على الراحة اليومية والثقة والسهولة.",
+            "instagram_format": "Hook -> Family benefit -> Trust angle -> CTA -> Hashtags",
             "hook_templates": [
-                "راحة العائلة تبدأ من التفاصيل التي تسهّل يومكم.",
-                "كل اختيار عملي للأسرة ينعكس على راحة اليوم كاملًا.",
-                "عندما يكون المنتج مناسبًا للعائلة، تشعر بالفرق في كل يوم.",
-                "الراحة، السهولة، والاطمئنان... هذا ما تحتاجه الأسرة فعلًا.",
+                "راحة العائلة تبدأ من التفاصيل التي تسهّل اليوم كله.",
+                "كل اختيار عملي للأسرة ينعكس على راحة البيت بشكل واضح.",
+                "حين يكون المنتج مناسبًا للعائلة، تشعر بالفرق في كل يوم.",
+                "السهولة، الراحة، والاطمئنان... هذا ما تحتاجه الأسرة فعلًا.",
+            ],
+            "pain_lines": [
+                "تفاصيل اليوم العائلي قد تصبح مرهقة عندما لا تكون الحلول عملية بما يكفي.",
+                "حين تتكرر المهام نفسها كل يوم، تصبح الراحة والسهولة مطلبًا أساسيًا.",
+                "كل شيء يخفف الضغط عن الأسرة يصنع فرقًا أكبر مما يبدو.",
+            ],
+            "solution_lines": [
+                "{product_name} خيار عملي يساعد على جعل اليوم أكثر راحة وسهولة.",
+                "{product_name} يمنح الأسرة طريقة أسهل للتعامل مع التفاصيل اليومية.",
+                "{product_name} صُمم ليضيف راحة أوضح إلى الروتين اليومي للعائلة.",
+            ],
+            "desire_lines": [
+                "النتيجة هي إحساس أفضل بالراحة والتنظيم والثقة في الاختيار.",
+                "هذا النوع من المنتجات يجعل اليوم العائلي أخف وأكثر هدوءًا.",
+                "يعطيك شعورًا أن التفاصيل اليومية أصبحت أسهل وأكثر ترتيبًا.",
+            ],
+            "cta_templates": [
+                "وفّر راحة أكثر لك ولعائلتك من اليوم.",
+                "اختر الحل العملي الذي يسهّل يوم الأسرة.",
+                "اجعل يومكم أسهل بخيار مناسب من الآن.",
             ],
             "title_templates": [
                 "{product_name} | راحة أكثر لك ولعائلتك",
                 "{product_name} | اختيار عملي للأسرة",
                 "{product_name} | سهولة يومية لكل البيت",
             ],
-            "description_formulas": [
-                "{product_name} خيار عملي يساعد على جعل اليوم العائلي أكثر راحة وسهولة. مناسب لمن يبحث عن منتج يدعم الروتين اليومي ويمنح الأسرة إحساسًا أكبر بالراحة والتنظيم.",
-                "إذا كنت تريد منتجًا يضيف سهولة حقيقية إلى يوم الأسرة، فإن {product_name} يقدم لك زاوية استخدام مريحة ومناسبة للحياة اليومية.",
-                "من التعب في التفاصيل الصغيرة إلى راحة أوضح لكل البيت، يأتي {product_name} كاختيار ذكي للعائلة التي تحب السهولة والاطمئنان.",
-            ],
-            "benefit_lines": [
-                "يساعد على جعل الروتين اليومي أكثر راحة وتنظيمًا.",
-                "خيار مناسب للعائلة التي تحب السهولة والعملية.",
-                "منتج يضيف فرقًا ملموسًا في التفاصيل اليومية.",
-            ],
-            "angle_lines": [
-                "مناسب للاستخدام اليومي داخل البيت أو مع العائلة.",
-                "يعطي إحساسًا أفضل بالترتيب والراحة والثقة في الاختيار.",
-                "اختيار عملي لمن يريد راحة أكثر بدون تعقيد.",
-            ],
-            "cta_templates": [
-                "وفّر راحة أكثر لك ولعائلتك من اليوم.",
-                "اختر الحل العملي الذي يسهّل يوم الأسرة.",
-                "اجعل يومكم أسهل وابدأ بالاختيار المناسب الآن.",
-            ],
             "keyword_stems": [
-                "راحة الأسرة", "منتج عائلي", "سهولة يومية", "للمنزل", "للأطفال", "حل عملي",
+                "راحة الأسرة", "منتج عائلي", "سهولة يومية", "للأطفال", "للعائلة", "حل عملي",
             ],
             "hashtag_stems": [
-                "عائلة", "راحة_الأسرة", "أطفال", "منزل", "حل_عملي",
+                "عائلة", "راحة_الأسرة", "أطفال", "سهولة_يومية", "حل_عملي",
             ],
         },
         "general": {
             "display_name": "General commercial",
-            "tone": "تجاري راقٍ، مختصر، واثق، ويركز على الفائدة العملية.",
-            "instagram_format": "Hook → Value line → Selling angle → CTA → Hashtags",
+            "tone_rules": "عربي تجاري راقٍ، مختصر، واثق، مقنع، غير آلي.",
+            "instagram_format": "Hook -> Value -> Selling angle -> CTA -> Hashtags",
             "hook_templates": [
-                "هناك منتجات تلفت النظر، وهناك منتجات تصنع فرقًا حقيقيًا.",
-                "اختيارك الأفضل هو الذي يجمع بين الشكل العملي والقيمة الواضحة.",
-                "إذا كنت تبحث عن شيء يضيف فرقًا ملموسًا ليومك، فهذا خيار يستحق الانتباه.",
-                "التفاصيل الذكية هي التي تجعل المنتج أقرب إلى قرار الشراء.",
+                "هناك منتجات عادية، وهناك منتجات تصنع فرقًا فعليًا في الاستخدام.",
+                "الاختيار الذكي هو الذي يمنحك فائدة واضحة من أول مرة.",
+                "إذا كنت تبحث عن قيمة عملية وشكل مقنع، فهذا النوع يستحق الانتباه.",
+                "الفرق الحقيقي يظهر عندما يجتمع الذكاء والنتيجة في منتج واحد.",
             ],
-            "title_templates": [
-                "{product_name} | قيمة أوضح واختيار أذكى",
-                "{product_name} | منتج عملي يستحق التجربة",
-                "{product_name} | فرق واضح في الاستخدام اليومي",
+            "pain_lines": [
+                "كثير من الخيارات تبدو جيدة، لكن القليل منها يمنحك قيمة واضحة فعلًا.",
+                "المنتج الجيد ليس مجرد شكل؛ بل فائدة تشعر بها في الاستخدام اليومي.",
+                "حين يكون الاختيار غير موفق، تضيع القيمة مهما بدا المنتج جذابًا.",
             ],
-            "description_formulas": [
-                "{product_name} يقدم قيمة عملية وتجربة استخدام مريحة، ويجمع بين الفائدة الواضحة والأسلوب المرتب في منتج واحد. مناسب لمن يبحث عن اختيار ذكي وسهل المراجعة والشراء.",
-                "إذا كنت تريد منتجًا يبدو جيدًا ويقدم فائدة فعلية، فإن {product_name} يمنحك زاوية بيع واضحة ومقنعة من أول نظرة.",
-                "من الخيارات العادية إلى الاختيار الأكثر إقناعًا، يأتي {product_name} كمنتج يوازن بين العملية والقيمة بطريقة جذابة.",
+            "solution_lines": [
+                "{product_name} يجمع بين العملية والقيمة بشكل يسهّل قرار الشراء.",
+                "{product_name} يقدم تجربة استخدام مريحة وفائدة واضحة من البداية.",
+                "{product_name} صُمم ليكون اختيارًا أذكى لمن يبحث عن نتيجة مقنعة.",
             ],
-            "benefit_lines": [
-                "قيمة عملية، شكل مقنع، وتجربة استخدام مريحة.",
-                "منتج يمنحك سببًا واضحًا للاقتناء من أول مرة.",
-                "خيار مناسب لمن يريد فائدة حقيقية بدون مبالغة.",
-            ],
-            "angle_lines": [
-                "مناسب للاستخدام اليومي ويقدّم فائدة واضحة للمشتري.",
-                "يعطي انطباعًا جيدًا ويضيف قيمة حقيقية في التفاصيل.",
-                "اختيار عملي لمن يحب الجودة الواضحة والنتيجة المريحة.",
+            "desire_lines": [
+                "النتيجة هي منتج يعطيك إحساسًا أفضل بالاختيار والقيمة.",
+                "هذا النوع من المنتجات يجعل قرار الشراء أكثر راحة وثقة.",
+                "يعطيك سببًا واضحًا للاقتناء بدل مجرد الانبهار المؤقت.",
             ],
             "cta_templates": [
                 "اطلبه الآن واستمتع بقيمة أوضح من أول تجربة.",
                 "جرّبه اليوم واختر المنتج الذي يصنع فرقًا فعلًا.",
                 "ابدأ بتجربة أذكى واختيار أكثر إقناعًا.",
             ],
+            "title_templates": [
+                "{product_name} | قيمة أوضح واختيار أذكى",
+                "{product_name} | منتج عملي يستحق التجربة",
+                "{product_name} | فرق واضح في الاستخدام اليومي",
+            ],
             "keyword_stems": [
                 "منتج عملي", "قيمة واضحة", "اختيار ذكي", "منتج مميز", "سهولة استخدام", "أفضل اختيار",
             ],
             "hashtag_stems": [
-                "منتجات_مميزة", "اختيار_ذكي", "قيمة", "عملي", "ترند_اليمن",
+                "منتجات_مميزة", "اختيار_ذكي", "قيمة", "عملي", "اختيار_أفضل",
             ],
         },
     }
+
+    BANNED_SYSTEM_PHRASES = [
+        "trend yemen",
+        "selected",
+        "approved",
+        "ready",
+        "finalized",
+        "home",
+        "جاهز للمراجعة",
+        "الحالة الإعلامية",
+        "داخل المتجر",
+        "داخل متجر",
+        "قابل للمراجعة",
+        "preview",
+        "raw",
+        "system",
+    ]
 
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
@@ -352,6 +370,25 @@ class SEOService:
     def _clean(self, value):
         return str(value or "").strip()
 
+    def _collapse_whitespace(self, text):
+        return re.sub(r"\s+", " ", self._clean(text)).strip()
+
+    def _normalize_product_name(self, value):
+        text = self._clean(value)
+        text = re.sub(r"[|_/]+", " ", text)
+        text = self._collapse_whitespace(text)
+
+        parts = text.split()
+        if len(parts) > 8:
+            text = " ".join(parts[:8])
+
+        return text or "منتج مميز"
+
+    def _normalize_category_text(self, value):
+        text = self._clean(value)
+        text = re.sub(r"[_|/]+", " ", text)
+        return self._collapse_whitespace(text)
+
     def _join_non_empty(self, values, delimiter=" "):
         return delimiter.join([self._clean(value) for value in values if self._clean(value)])
 
@@ -366,60 +403,122 @@ class SEOService:
         index = self._checksum(seed_text) % len(valid_options)
         return valid_options[index]
 
+    def _strip_system_phrases(self, text):
+        cleaned = self._clean(text)
+        if not cleaned:
+            return ""
+
+        result = cleaned
+        for phrase in self.BANNED_SYSTEM_PHRASES:
+            pattern = re.compile(rf"\b{re.escape(phrase)}\b", flags=re.IGNORECASE)
+            result = pattern.sub("", result)
+
+        result = result.replace("..", ".")
+        result = result.replace("،،", "،")
+        result = re.sub(r"\s+([،.!؟])", r"\1", result)
+        result = re.sub(r"([،.!؟]){2,}", r"\1", result)
+        return self._collapse_whitespace(result)
+
+    def _limit_product_name_repetition(self, text, product_name, max_occurrences=1):
+        cleaned_text = self._clean(text)
+        cleaned_name = self._clean(product_name)
+
+        if not cleaned_text or not cleaned_name:
+            return cleaned_text
+
+        pattern = re.compile(re.escape(cleaned_name), flags=re.IGNORECASE)
+        matches = list(pattern.finditer(cleaned_text))
+
+        if len(matches) <= max_occurrences:
+            return cleaned_text
+
+        result_parts = []
+        last_index = 0
+
+        for idx, match in enumerate(matches):
+            result_parts.append(cleaned_text[last_index:match.start()])
+            if idx < max_occurrences:
+                result_parts.append(match.group(0))
+            last_index = match.end()
+
+        result_parts.append(cleaned_text[last_index:])
+        result = "".join(result_parts)
+        return self._collapse_whitespace(result)
+
+    def _sanitize_text(self, text, product_name="", max_length=600):
+        cleaned = self._strip_system_phrases(text)
+        cleaned = self._limit_product_name_repetition(cleaned, product_name, max_occurrences=1)
+        cleaned = re.sub(r"\s+\n", "\n", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        cleaned = cleaned.strip(" -|،\n\t")
+        cleaned = self._collapse_whitespace(cleaned.replace(" \n", "\n")).replace(" \n", "\n")
+
+        if len(cleaned) > max_length:
+            cleaned = cleaned[:max_length].rstrip(" ،.!؟") + "..."
+
+        return cleaned
+
     def _normalize_keywords(self, values):
+        items = []
+
         if isinstance(values, list):
             items = [self._clean(item) for item in values if self._clean(item)]
-            deduped = []
-            seen = set()
-            for item in items:
-                lowered = item.lower()
-                if lowered in seen:
-                    continue
-                seen.add(lowered)
-                deduped.append(item)
-            return ", ".join(deduped[:8])
+        else:
+            text = self._clean(values)
+            if text:
+                items = [part.strip() for part in text.replace("\n", ",").split(",") if part.strip()]
 
-        text = self._clean(values)
-        if not text:
-            return ""
+        cleaned_items = []
+        seen = set()
 
-        parts = [part.strip() for part in text.replace("\n", ",").split(",")]
-        parts = [part for part in parts if part]
-        return self._normalize_keywords(parts)
+        for item in items:
+            normalized = self._strip_system_phrases(item)
+            normalized = re.sub(r"[#]+", "", normalized)
+            normalized = self._collapse_whitespace(normalized)
+            if not normalized:
+                continue
+
+            lowered = normalized.lower()
+            if lowered in seen:
+                continue
+
+            seen.add(lowered)
+            cleaned_items.append(normalized)
+
+        return ", ".join(cleaned_items[:8])
 
     def _normalize_hashtags(self, values):
+        items = []
+
         if isinstance(values, list):
-            tags = []
-            seen = set()
-            for item in values:
-                text = self._clean(item)
-                if not text:
-                    continue
-                text = text.replace(" ", "_")
-                if not text.startswith("#"):
-                    text = "#" + text
-                lowered = text.lower()
-                if lowered in seen:
-                    continue
-                seen.add(lowered)
-                tags.append(text)
-            return " ".join(tags[:8])
+            items = [self._clean(item) for item in values if self._clean(item)]
+        else:
+            text = self._clean(values)
+            if text:
+                items = text.replace("\n", " ").split()
 
-        text = self._clean(values)
-        if not text:
-            return ""
+        cleaned_tags = []
+        seen = set()
 
-        parts = text.replace("\n", " ").split()
-        normalized = []
-        for part in parts:
-            cleaned = self._clean(part)
-            if not cleaned:
+        for item in items:
+            normalized = self._strip_system_phrases(item)
+            normalized = normalized.replace(" ", "_").replace(",", "").replace("،", "")
+            normalized = normalized.lstrip("#")
+            normalized = re.sub(r"[^0-9A-Za-z_\u0600-\u06FF]+", "", normalized)
+
+            if not normalized:
                 continue
-            cleaned = cleaned.replace(" ", "_")
-            if not cleaned.startswith("#"):
-                cleaned = "#" + cleaned
-            normalized.append(cleaned)
-        return self._normalize_hashtags(normalized)
+
+            tag = "#" + normalized
+            lowered = tag.lower()
+
+            if lowered in seen:
+                continue
+
+            seen.add(lowered)
+            cleaned_tags.append(tag)
+
+        return " ".join(cleaned_tags[:8])
 
     def _extract_first_json_object(self, text):
         raw = self._clean(text)
@@ -483,11 +582,11 @@ class SEOService:
         final_media_status,
         strategy_hint="",
     ):
-        clean_name = self._clean(product_name) or "منتج مميز"
-        clean_category = self._clean(category_id)
+        clean_name = self._normalize_product_name(product_name)
+        clean_category = self._normalize_category_text(category_id)
         clean_price = self._normalize_price_text(manual_price)
         clean_media_url = self._clean(final_media_url)
-        clean_media_status = self._clean(final_media_status) or "selected"
+        clean_media_status = self._clean(final_media_status) or "final"
 
         strategy_profile = self._build_strategy_profile(
             product_name=clean_name,
@@ -501,21 +600,20 @@ class SEOService:
         )
 
         hook = self._pick_variant(strategy_profile["hook_templates"], seed_text + "|hook")
-        title_template = self._pick_variant(strategy_profile["title_templates"], seed_text + "|title")
-        description_formula = self._pick_variant(strategy_profile["description_formulas"], seed_text + "|description")
-        benefit_line = self._pick_variant(strategy_profile["benefit_lines"], seed_text + "|benefit")
-        angle_line = self._pick_variant(strategy_profile["angle_lines"], seed_text + "|angle")
+        pain_line = self._pick_variant(strategy_profile["pain_lines"], seed_text + "|pain")
+        solution_line = self._pick_variant(strategy_profile["solution_lines"], seed_text + "|solution")
+        desire_line = self._pick_variant(strategy_profile["desire_lines"], seed_text + "|desire")
         cta = self._pick_variant(strategy_profile["cta_templates"], seed_text + "|cta")
+        title_template = self._pick_variant(strategy_profile["title_templates"], seed_text + "|title")
 
         keyword_candidates = [
             clean_name,
             clean_category,
-            clean_price,
             strategy_profile["display_name"],
             *strategy_profile["keyword_stems"],
         ]
+
         hashtag_candidates = [
-            "ترند_اليمن",
             clean_name.replace(" ", "_"),
             clean_category.replace(" ", "_"),
             *strategy_profile["hashtag_stems"],
@@ -529,14 +627,14 @@ class SEOService:
             "final_media_status": clean_media_status,
             "strategy_key": strategy_profile["strategy_key"],
             "strategy_name": strategy_profile["display_name"],
-            "tone_rules": strategy_profile["tone"],
+            "tone_rules": strategy_profile["tone_rules"],
             "instagram_format": strategy_profile["instagram_format"],
             "hook": hook,
-            "title_template": title_template,
-            "description_formula": description_formula,
-            "benefit_line": benefit_line,
-            "angle_line": angle_line,
+            "pain_line": pain_line,
+            "solution_line": solution_line,
+            "desire_line": desire_line,
             "cta": cta,
+            "title_template": title_template,
             "keyword_candidates": keyword_candidates,
             "hashtag_candidates": hashtag_candidates,
         }
@@ -548,21 +646,37 @@ class SEOService:
             price=brief["manual_price"],
         )
 
-    def _build_deterministic_payload(self, brief):
-        marketing_title = self._render_template(brief["title_template"], brief)
-        marketing_description = self._render_template(brief["description_formula"], brief)
+    def _compose_marketing_title(self, brief):
+        title = self._render_template(brief["title_template"], brief)
+        return self._sanitize_text(title, product_name=brief["product_name"], max_length=90)
 
-        social_lines = [
-            brief["hook"],
-            f"{brief['benefit_line']} بسعر {brief['manual_price']}.",
-            brief["angle_line"],
-            brief["cta"],
-            self._normalize_hashtags(brief["hashtag_candidates"]),
+    def _compose_marketing_description(self, brief):
+        description = " ".join([
+            self._render_template(brief["pain_line"], brief),
+            self._render_template(brief["solution_line"], brief),
+            self._render_template(brief["desire_line"], brief),
+            f"بسعر {brief['manual_price']}.",
+        ])
+        return self._sanitize_text(description, product_name=brief["product_name"], max_length=320)
+
+    def _compose_social_post(self, brief, seo_hashtags):
+        lines = [
+            self._sanitize_text(brief["hook"], product_name=brief["product_name"], max_length=120),
+            self._sanitize_text(self._render_template(brief["solution_line"], brief), product_name=brief["product_name"], max_length=160),
+            self._sanitize_text(self._render_template(brief["desire_line"], brief), product_name=brief["product_name"], max_length=160),
+            f"السعر: {brief['manual_price']}",
+            self._sanitize_text(brief["cta"], product_name=brief["product_name"], max_length=120),
+            seo_hashtags,
         ]
-        social_post = "\n".join([self._clean(line) for line in social_lines if self._clean(line)])
+        return "\n".join([line for line in lines if self._clean(line)])
 
+    def _build_deterministic_payload(self, brief):
         seo_keywords = self._normalize_keywords(brief["keyword_candidates"])
         seo_hashtags = self._normalize_hashtags(brief["hashtag_candidates"])
+
+        marketing_title = self._compose_marketing_title(brief)
+        marketing_description = self._compose_marketing_description(brief)
+        social_post = self._compose_social_post(brief, seo_hashtags)
 
         return {
             "marketing_title": marketing_title,
@@ -581,12 +695,12 @@ class SEOService:
         )
 
         return f"""
-أنت Senior Arabic Direct Response Copywriter متخصص بمحتوى المتاجر والإنستغرام للسوق اليمني.
-المطلوب: كتابة محتوى تجاري يبدو بشريًا، مقنعًا، مختصرًا، غير مبتذل، وغير آلي.
+أنت Senior Arabic Direct Response Copywriter.
+المطلوب كتابة commercial copy عربي احترافي جدًا، يبدو بشريًا ومقنعًا ومناسبًا للنشر المباشر.
 
-التزم بهذه الاستراتيجية:
+الاستراتيجية:
 - Strategy: {brief["strategy_name"]}
-- Tone: {brief["tone_rules"]}
+- Tone Rules: {brief["tone_rules"]}
 - Instagram Format: {brief["instagram_format"]}
 
 المدخلات:
@@ -596,27 +710,28 @@ class SEOService:
 - FinalMediaPresent: {"yes" if brief["final_media_present"] else "no"}
 - FinalMediaStatus: {brief["final_media_status"]}
 
-العناصر الإرشادية:
-- Hook direction: {brief["hook"]}
-- Description formula direction: {brief["description_formula"]}
-- Benefit line direction: {brief["benefit_line"]}
-- Selling angle direction: {brief["angle_line"]}
-- CTA direction: {brief["cta"]}
-- Keyword hints: {keyword_candidates}
-- Hashtag hints: {hashtag_candidates}
+المحاور التجارية:
+- Hook: {brief["hook"]}
+- Pain: {brief["pain_line"]}
+- Solution: {brief["solution_line"]}
+- Desire: {brief["desire_line"]}
+- CTA: {brief["cta"]}
+
+SEO hints:
+- Keywords: {keyword_candidates}
+- Hashtags: {hashtag_candidates}
 
 قواعد صارمة:
-- العربية يجب أن تكون احترافية وتجارية ومقنعة
-- لا تستخدم لغة ركيكة أو تشغيلية أو إدارية
-- لا تقل: جاهز للمراجعة / الحالة الإعلامية / داخل المتجر
-- اجعل MarketingTitle قصيرًا وقويًا
-- اجعل MarketingDescription مقنعًا ويعكس زاوية البيع
-- اجعل SocialPost بصيغة إنستغرام تحويلية: Hook ثم قيمة ثم زاوية بيع ثم CTA ثم hashtags
+- لا تستخدم wording تشغيلي أو إداري أو آلي
+- لا تستخدم: selected / approved / ready / finalized / Trend Yemen / home
+- لا تكرر اسم المنتج بشكل خام أو ممل
+- اجعل MarketingTitle قصيرة وقوية وبيعية
+- اجعل MarketingDescription مقنعة وواضحة الزاوية
+- اجعل SocialPost بصيغة تحويلية حقيقية: Hook ثم benefit ثم angle ثم CTA ثم hashtags
 - لا تغيّر السعر
-- لا تضف وعودًا غير منطقية
-- لا تُرجع أي شرح خارج JSON
+- لا تضف أي شرح خارج JSON
 
-أرجع JSON صالحًا فقط بهذه المفاتيح:
+أعد JSON فقط:
 {{
   "marketing_title": "...",
   "marketing_description": "...",
@@ -626,19 +741,41 @@ class SEOService:
 }}
 """.strip()
 
-    def _merge_ai_payload_with_brief(self, ai_payload, brief, fallback):
-        if not isinstance(ai_payload, dict):
-            return fallback
+    def _sanitize_payload(self, payload, brief):
+        marketing_title = self._sanitize_text(
+            payload.get("marketing_title", ""),
+            product_name=brief["product_name"],
+            max_length=90,
+        )
+        marketing_description = self._sanitize_text(
+            payload.get("marketing_description", ""),
+            product_name=brief["product_name"],
+            max_length=320,
+        )
+        social_post = self._clean(payload.get("social_post", ""))
+        seo_keywords = self._normalize_keywords(payload.get("seo_keywords"))
+        seo_hashtags = self._normalize_hashtags(payload.get("seo_hashtags"))
 
-        marketing_title = self._clean(ai_payload.get("marketing_title")) or fallback["marketing_title"]
-        marketing_description = self._clean(ai_payload.get("marketing_description")) or fallback["marketing_description"]
-        social_post = self._clean(ai_payload.get("social_post")) or fallback["social_post"]
+        if not marketing_title:
+            marketing_title = self._compose_marketing_title(brief)
 
-        seo_keywords = self._normalize_keywords(ai_payload.get("seo_keywords")) or fallback["seo_keywords"]
-        seo_hashtags = self._normalize_hashtags(ai_payload.get("seo_hashtags")) or fallback["seo_hashtags"]
+        if not marketing_description:
+            marketing_description = self._compose_marketing_description(brief)
+
+        if not social_post:
+            social_post = self._compose_social_post(brief, seo_hashtags)
+
+        social_post = self._sanitize_text(
+            social_post,
+            product_name=brief["product_name"],
+            max_length=700,
+        )
 
         if brief["cta"] not in social_post:
-            social_post = "\n".join([social_post, brief["cta"], seo_hashtags])
+            social_post = "\n".join([social_post, brief["cta"]])
+
+        if not seo_hashtags:
+            seo_hashtags = self._normalize_hashtags(brief["hashtag_candidates"])
 
         if seo_hashtags not in social_post:
             social_post = "\n".join([social_post, seo_hashtags])
@@ -647,11 +784,27 @@ class SEOService:
             "marketing_title": marketing_title,
             "marketing_description": marketing_description,
             "social_post": social_post,
-            "seo_keywords": seo_keywords,
+            "seo_keywords": seo_keywords or self._normalize_keywords(brief["keyword_candidates"]),
             "seo_hashtags": seo_hashtags,
             "status": "ready",
             "error_message": "",
         }
+
+    def _merge_ai_payload_with_brief(self, ai_payload, brief, fallback):
+        if not isinstance(ai_payload, dict):
+            return fallback
+
+        merged = {
+            "marketing_title": ai_payload.get("marketing_title", fallback["marketing_title"]),
+            "marketing_description": ai_payload.get("marketing_description", fallback["marketing_description"]),
+            "social_post": ai_payload.get("social_post", fallback["social_post"]),
+            "seo_keywords": ai_payload.get("seo_keywords", fallback["seo_keywords"]),
+            "seo_hashtags": ai_payload.get("seo_hashtags", fallback["seo_hashtags"]),
+            "status": "ready",
+            "error_message": "",
+        }
+
+        return self._sanitize_payload(merged, brief)
 
     def generate_publish_ready_content(
         self,
