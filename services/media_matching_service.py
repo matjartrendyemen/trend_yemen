@@ -1,8 +1,7 @@
-# services/media_matching_service.py
-
 from datetime import datetime, timezone
 
 from adapters.pexels_adapter import PexelsAdapter
+from services.cj_supplier_service import CJSupplierService
 
 
 class MediaMatchingService:
@@ -26,11 +25,13 @@ class MediaMatchingService:
 
     DEFAULT_SOURCE_TAG = "dummy_matcher"
     SEED_SOURCE_TAG = "seed_media"
+    CJ_SOURCE_TAG = "cj_supplier"
     PEXELS_SOURCE_TAG = "pexels"
 
     def __init__(self, sheets_store):
         self.sheets = sheets_store
         self.pexels = PexelsAdapter()
+        self.cj_supplier = CJSupplierService()
 
     def _now_iso(self):
         return datetime.now(timezone.utc).isoformat()
@@ -92,12 +93,15 @@ class MediaMatchingService:
         score,
         label,
         url,
+        source_family="",
+        source_name="",
+        extra_fields=None,
     ):
         normalized_role = self._normalize_role(role)
         normalized_type = self._normalize_type(media_type)
         normalized_source_tag = self._normalize_source_tag(source_tag)
 
-        return {
+        candidate = {
             "source_tag": normalized_source_tag,
             "source_priority": self._get_source_priority(normalized_source_tag),
             "type": normalized_type,
@@ -108,6 +112,57 @@ class MediaMatchingService:
             "label": self._clean_str(label),
             "url": self._clean_str(url),
         }
+
+        if self._clean_str(source_family):
+            candidate["source_family"] = self._clean_str(source_family)
+
+        if self._clean_str(source_name):
+            candidate["source_name"] = self._clean_str(source_name)
+
+        if isinstance(extra_fields, dict):
+            for key, value in extra_fields.items():
+                if key in candidate:
+                    continue
+                candidate[key] = value
+
+        return candidate
+
+    def _build_candidate_from_payload(self, payload):
+        if not isinstance(payload, dict):
+            return None
+
+        url = self._clean_str(payload.get("url"))
+        if not url:
+            return None
+
+        extra_fields = {
+            key: value
+            for key, value in payload.items()
+            if key not in {
+                "source_tag",
+                "type",
+                "role",
+                "rank",
+                "score",
+                "label",
+                "url",
+                "source_family",
+                "source_name",
+            }
+        }
+
+        return self._build_candidate(
+            source_tag=payload.get("source_tag", self.DEFAULT_SOURCE_TAG),
+            media_type=payload.get("type", "image"),
+            role=payload.get("role", "additional"),
+            rank=payload.get("rank", 999),
+            score=payload.get("score"),
+            label=payload.get("label", ""),
+            url=url,
+            source_family=payload.get("source_family", ""),
+            source_name=payload.get("source_name", ""),
+            extra_fields=extra_fields,
+        )
 
     def _sort_bucket_for_candidate(self, candidate):
         role = self._normalize_role(candidate.get("role"))
@@ -189,6 +244,8 @@ class MediaMatchingService:
                 score=1.0,
                 label=f"{label_base} Original",
                 url=cleaned_seed_url,
+                source_family="seed",
+                source_name="seed",
             )
 
         name_slug = self._slugify(name or "product")
@@ -212,7 +269,7 @@ class MediaMatchingService:
             source_tag=self.DEFAULT_SOURCE_TAG,
             media_type="video",
             role="video",
-            rank=2,
+            rank=60,
             score=0.93,
             label=f"{label_base} Video",
             url=f"dummy://media/{name_slug}-video.mp4",
@@ -228,7 +285,7 @@ class MediaMatchingService:
             source_tag=self.DEFAULT_SOURCE_TAG,
             media_type="image",
             role="additional",
-            rank=3,
+            rank=70,
             score=0.87,
             label=f"{label_base} Additional",
             url=f"dummy://media/{category_slug}-additional.jpg",
@@ -244,7 +301,7 @@ class MediaMatchingService:
             source_tag=self.DEFAULT_SOURCE_TAG,
             media_type="image",
             role="lifestyle",
-            rank=4,
+            rank=80,
             score=0.75,
             label=f"{label_base} Lifestyle",
             url=f"dummy://media/{name_slug}-lifestyle.jpg",
@@ -299,12 +356,49 @@ class MediaMatchingService:
                     source_tag=self.PEXELS_SOURCE_TAG,
                     media_type="image",
                     role="lifestyle",
-                    rank=4 + index,
+                    rank=90 + index,
                     score=score,
                     label=f"{label_base} Lifestyle {index}",
                     url=item["url"],
+                    source_family="fallback",
+                    source_name="pexels",
                 )
             )
+
+        return candidates
+
+    def _build_cj_supplier_candidates(self, product_name, category_id):
+        label_base = " - ".join(
+            [part for part in [self._clean_str(product_name), self._clean_str(category_id)] if part]
+        ) or "Generic Product"
+
+        try:
+            safe_matches = self.cj_supplier.find_safe_matches(
+                product_name=self._clean_str(product_name),
+                category_id=self._clean_str(category_id),
+                max_results=1,
+                hydrate_details=True,
+                include_video=True,
+            )
+        except Exception:
+            safe_matches = []
+
+        if not safe_matches:
+            return []
+
+        candidates = []
+        for safe_match in safe_matches:
+            payloads = self.cj_supplier.build_canonical_candidate_payloads(
+                safe_match,
+                base_label=label_base,
+                max_images=2,
+                include_video=True,
+            )
+
+            for payload in payloads:
+                candidate = self._build_candidate_from_payload(payload)
+                if candidate:
+                    candidates.append(candidate)
 
         return candidates
 
@@ -315,15 +409,27 @@ class MediaMatchingService:
                 category_id=category_id,
                 seed_media_url=seed_media_url,
             ),
+        ]
+
+        cj_candidates = self._build_cj_supplier_candidates(
+            product_name=product_name,
+            category_id=category_id,
+        )
+        if cj_candidates:
+            candidates.extend(cj_candidates)
+
+        candidates.append(
             self._build_video_candidate(
                 product_name=product_name,
                 category_id=category_id,
-            ),
+            )
+        )
+        candidates.append(
             self._build_additional_candidate(
                 product_name=product_name,
                 category_id=category_id,
-            ),
-        ]
+            )
+        )
 
         pexels_lifestyle_candidates = self._build_pexels_lifestyle_candidates(
             product_name=product_name,
