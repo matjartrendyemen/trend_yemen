@@ -33,6 +33,11 @@ class AdminReadService:
     def _build_admin_record(self, row: Dict[str, Any]) -> Dict[str, Any]:
         base = self._build_base_record(row)
         media_contract = self._build_media_contract(row, base)
+        product_workspace_assets = self._build_product_workspace_assets(
+            row=row,
+            base_record=base,
+            media_contract=media_contract,
+        )
         content_visibility = self._build_content_visibility(row)
         failure_visibility = self._build_failure_visibility(base)
         stuck_visibility = self._build_stuck_processing_visibility(row, base)
@@ -52,6 +57,7 @@ class AdminReadService:
             **content_visibility,
             **failure_visibility,
             **stuck_visibility,
+            "product_workspace_assets": product_workspace_assets,
             "action_eligibility": action_eligibility,
             "smart_encoding_inputs": smart_inputs,
             "readiness": readiness,
@@ -281,6 +287,432 @@ class AdminReadService:
         if isinstance(parsed, list):
             return parsed
         return []
+
+    # ------------------------------------------------------------------
+    # Workspace Read Contract helpers
+    # ------------------------------------------------------------------
+
+    def _build_product_workspace_assets(
+        self,
+        row: Dict[str, Any],
+        base_record: Dict[str, Any],
+        media_contract: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        raw_matched_candidates = self._read_matched_media_candidates(row)
+
+        original_assets = self._build_original_workspace_assets(base_record)
+        cj_assets, pexels_assets, other_matched_assets = self._build_matched_workspace_assets(raw_matched_candidates)
+        final_assets = self._extract_final_workspace_assets(
+            row=row,
+            base_record=base_record,
+            raw_matched_candidates=raw_matched_candidates,
+            original_assets=original_assets,
+            cj_assets=cj_assets,
+            pexels_assets=pexels_assets,
+            other_matched_assets=other_matched_assets,
+        )
+        manual_assets = self._extract_manual_workspace_assets(row)
+
+        ordered_assets = (
+            original_assets
+            + cj_assets
+            + pexels_assets
+            + other_matched_assets
+            + final_assets
+            + manual_assets
+        )
+
+        return self._dedupe_workspace_assets(ordered_assets)
+
+    def _read_matched_media_candidates(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw_candidates = self._parse_json_list(row.get("MatchedMediaJSON"))
+        if not isinstance(raw_candidates, list):
+            return []
+
+        candidates: List[Dict[str, Any]] = []
+        for candidate in raw_candidates:
+            if isinstance(candidate, dict):
+                candidates.append(candidate)
+
+        return candidates
+
+    def _infer_workspace_source_meta(self, source_tag: str) -> Dict[str, str]:
+        normalized = self._clean(source_tag).lower()
+
+        if normalized in {"seed_media", "source_image", "original_seed"}:
+            return {
+                "source_family": "seed",
+                "source_name": "seed",
+                "source_tag": "seed_media",
+            }
+
+        if normalized in {"cj", "cj_supplier"}:
+            return {
+                "source_family": "supplier",
+                "source_name": "cj",
+                "source_tag": "cj_supplier",
+            }
+
+        if normalized == "pexels":
+            return {
+                "source_family": "fallback",
+                "source_name": "pexels",
+                "source_tag": "pexels",
+            }
+
+        if normalized == "final_selected":
+            return {
+                "source_family": "final",
+                "source_name": "selection",
+                "source_tag": "final_selected",
+            }
+
+        if normalized == "manual_ref":
+            return {
+                "source_family": "manual",
+                "source_name": "manual",
+                "source_tag": "manual_ref",
+            }
+
+        return {
+            "source_family": "unknown",
+            "source_name": "unknown",
+            "source_tag": normalized or "unknown_source",
+        }
+
+    def _normalize_workspace_asset(
+        self,
+        raw_asset: Any,
+        *,
+        default_rank: int = 0,
+        fallback_source_tag: str = "",
+        fallback_role: str = "",
+        fallback_label: str = "",
+        is_final: bool = False,
+    ) -> Dict[str, Any] | None:
+        if isinstance(raw_asset, str):
+            raw_asset = {"url": raw_asset}
+
+        if not isinstance(raw_asset, dict):
+            return None
+
+        url = self._first_non_empty(
+            raw_asset.get("url"),
+            raw_asset.get("image_url"),
+            raw_asset.get("video_url"),
+            raw_asset.get("src"),
+        )
+        if not url:
+            return None
+
+        source_tag = self._first_non_empty(
+            raw_asset.get("source_tag"),
+            fallback_source_tag,
+        )
+        source_meta = self._infer_workspace_source_meta(source_tag)
+
+        source_family = self._first_non_empty(
+            raw_asset.get("source_family"),
+            source_meta["source_family"],
+        )
+        source_name = self._first_non_empty(
+            raw_asset.get("source_name"),
+            source_meta["source_name"],
+        )
+        source_tag = self._first_non_empty(
+            raw_asset.get("source_tag"),
+            source_meta["source_tag"],
+        )
+
+        media_type = self._normalize_media_type(raw_asset.get("type"), url)
+        role = self._normalize_media_role(
+            self._first_non_empty(raw_asset.get("role"), fallback_role),
+            media_type,
+        )
+
+        priority = self._safe_int(raw_asset.get("priority"))
+        if priority <= 0:
+            priority = self.MEDIA_ROLE_PRIORITY.get(role, 999)
+
+        rank = self._safe_int(raw_asset.get("rank"))
+        if rank <= 0:
+            rank = default_rank
+
+        label = self._first_non_empty(
+            raw_asset.get("label"),
+            fallback_label,
+            f"{role.title()} Asset",
+        )
+
+        return {
+            "source_family": source_family,
+            "source_name": source_name,
+            "source_tag": source_tag,
+            "type": media_type,
+            "role": role,
+            "priority": priority,
+            "rank": rank,
+            "url": url,
+            "label": label,
+            "is_final": bool(is_final),
+        }
+
+    def _build_original_workspace_assets(self, base_record: Dict[str, Any]) -> List[Dict[str, Any]]:
+        source_image_url = self._clean(base_record.get("source_image_url"))
+        if not source_image_url:
+            return []
+
+        asset = self._normalize_workspace_asset(
+            {
+                "url": source_image_url,
+                "type": "image",
+                "role": "original",
+                "priority": 1,
+                "rank": 1,
+                "label": "Original Seed",
+            },
+            fallback_source_tag="seed_media",
+            fallback_role="original",
+            fallback_label="Original Seed",
+            is_final=False,
+        )
+
+        return [asset] if asset else []
+
+    def _build_matched_workspace_assets(
+        self,
+        raw_matched_candidates: List[Dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        normalized_assets: List[Dict[str, Any]] = []
+
+        for index, candidate in enumerate(raw_matched_candidates, start=1):
+            asset = self._normalize_workspace_asset(candidate, default_rank=index)
+            if asset:
+                normalized_assets.append(asset)
+
+        normalized_assets.sort(
+            key=lambda item: (
+                int(item.get("priority", 999)),
+                int(item.get("rank", 999)),
+                item.get("label", ""),
+            )
+        )
+
+        cj_assets = []
+        pexels_assets = []
+        other_assets = []
+
+        for asset in normalized_assets:
+            source_tag = self._clean(asset.get("source_tag")).lower()
+            role = self._clean(asset.get("role")).lower()
+
+            if role == "original" and source_tag == "seed_media":
+                continue
+
+            if source_tag == "cj_supplier":
+                cj_assets.append(asset)
+            elif source_tag == "pexels":
+                pexels_assets.append(asset)
+            else:
+                other_assets.append(asset)
+
+        return cj_assets, pexels_assets, other_assets
+
+    def _find_existing_workspace_asset_by_url(
+        self,
+        assets: List[Dict[str, Any]],
+        url: str,
+    ) -> Dict[str, Any] | None:
+        target_url = self._clean(url)
+        if not target_url:
+            return None
+
+        for asset in assets:
+            if self._clean(asset.get("url")) == target_url:
+                return dict(asset)
+
+        return None
+
+    def _extract_final_workspace_assets(
+        self,
+        row: Dict[str, Any],
+        base_record: Dict[str, Any],
+        raw_matched_candidates: List[Dict[str, Any]],
+        original_assets: List[Dict[str, Any]],
+        cj_assets: List[Dict[str, Any]],
+        pexels_assets: List[Dict[str, Any]],
+        other_matched_assets: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        reference_assets = original_assets + cj_assets + pexels_assets + other_matched_assets
+        final_assets: List[Dict[str, Any]] = []
+
+        final_primary_media_url = self._first_non_empty(
+            row.get("FinalPrimaryMediaURL"),
+            row.get("FinalImageURL"),
+            base_record.get("final_image_url"),
+        )
+        if final_primary_media_url:
+            existing = self._find_existing_workspace_asset_by_url(reference_assets, final_primary_media_url)
+            if existing:
+                existing["is_final"] = True
+                existing["label"] = self._first_non_empty(existing.get("label"), "Final Selected")
+                final_assets.append(existing)
+            else:
+                asset = self._normalize_workspace_asset(
+                    {
+                        "url": final_primary_media_url,
+                        "type": self._clean(row.get("FinalPrimaryMediaType")),
+                        "label": "Final Selected Primary",
+                    },
+                    fallback_source_tag="final_selected",
+                    fallback_role="additional",
+                    fallback_label="Final Selected Primary",
+                    is_final=True,
+                )
+                if asset:
+                    final_assets.append(asset)
+
+        gallery_items = self._parse_json_value(row.get("FinalGalleryMediaJSON"))
+        if isinstance(gallery_items, list):
+            for index, item in enumerate(gallery_items, start=1):
+                asset = None
+
+                if isinstance(item, dict):
+                    item_url = self._first_non_empty(
+                        item.get("url"),
+                        item.get("image_url"),
+                        item.get("video_url"),
+                    )
+                    if item_url:
+                        existing = self._find_existing_workspace_asset_by_url(reference_assets, item_url)
+                        if existing:
+                            existing["is_final"] = True
+                            existing["label"] = self._first_non_empty(
+                                item.get("label"),
+                                existing.get("label"),
+                                f"Final Gallery {index}",
+                            )
+                            asset = existing
+
+                    if not asset:
+                        asset = self._normalize_workspace_asset(
+                            item,
+                            default_rank=index,
+                            fallback_source_tag="final_selected",
+                            fallback_role="additional",
+                            fallback_label=f"Final Gallery {index}",
+                            is_final=True,
+                        )
+
+                elif isinstance(item, str):
+                    existing = self._find_existing_workspace_asset_by_url(reference_assets, item)
+                    if existing:
+                        existing["is_final"] = True
+                        existing["label"] = self._first_non_empty(existing.get("label"), f"Final Gallery {index}")
+                        asset = existing
+                    else:
+                        asset = self._normalize_workspace_asset(
+                            {"url": item},
+                            default_rank=index,
+                            fallback_source_tag="final_selected",
+                            fallback_role="additional",
+                            fallback_label=f"Final Gallery {index}",
+                            is_final=True,
+                        )
+
+                if asset:
+                    final_assets.append(asset)
+
+        return final_assets
+
+    def _extract_manual_workspace_assets(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        manual_assets: List[Dict[str, Any]] = []
+
+        for key, value in row.items():
+            lowered = self._clean(key).lower()
+            if not lowered.startswith("manual"):
+                continue
+
+            if "url" in lowered:
+                asset = self._normalize_workspace_asset(
+                    {
+                        "url": value,
+                        "label": key,
+                    },
+                    fallback_source_tag="manual_ref",
+                    fallback_role="additional",
+                    fallback_label=key,
+                    is_final=False,
+                )
+                if asset:
+                    manual_assets.append(asset)
+
+            elif "json" in lowered:
+                parsed = self._parse_json_value(value)
+
+                if isinstance(parsed, list):
+                    for index, item in enumerate(parsed, start=1):
+                        asset = self._normalize_workspace_asset(
+                            item,
+                            default_rank=index,
+                            fallback_source_tag="manual_ref",
+                            fallback_role="additional",
+                            fallback_label=f"{key} {index}",
+                            is_final=False,
+                        )
+                        if asset:
+                            manual_assets.append(asset)
+
+                elif isinstance(parsed, dict):
+                    asset = self._normalize_workspace_asset(
+                        parsed,
+                        default_rank=1,
+                        fallback_source_tag="manual_ref",
+                        fallback_role="additional",
+                        fallback_label=key,
+                        is_final=False,
+                    )
+                    if asset:
+                        manual_assets.append(asset)
+
+        return manual_assets
+
+    def _dedupe_workspace_assets(self, assets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+
+            dedupe_key = (
+                self._clean(asset.get("url")),
+                self._clean(asset.get("source_tag")),
+                self._clean(asset.get("role")),
+                bool(asset.get("is_final")),
+            )
+
+            if not dedupe_key[0]:
+                continue
+
+            if dedupe_key in seen:
+                continue
+
+            seen.add(dedupe_key)
+            deduped.append({
+                "source_family": self._clean(asset.get("source_family")),
+                "source_name": self._clean(asset.get("source_name")),
+                "source_tag": self._clean(asset.get("source_tag")),
+                "type": self._clean(asset.get("type")) or "image",
+                "role": self._clean(asset.get("role")) or "additional",
+                "priority": self._safe_int(asset.get("priority")) or 999,
+                "rank": self._safe_int(asset.get("rank")) or len(deduped) + 1,
+                "url": self._clean(asset.get("url")),
+                "label": self._clean(asset.get("label")) or "Workspace Asset",
+                "is_final": bool(asset.get("is_final")),
+            })
+
+        return deduped
 
     def _build_failure_visibility(self, record: Dict[str, Any]) -> Dict[str, Any]:
         row_id = self._clean(record.get("row_id"))
