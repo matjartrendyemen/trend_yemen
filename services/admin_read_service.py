@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -33,7 +34,7 @@ class AdminReadService:
     def _build_admin_record(self, row: Dict[str, Any]) -> Dict[str, Any]:
         base = self._build_base_record(row)
         media_contract = self._build_media_contract(row, base)
-        ownership_contract = self._build_ownership_contract(row)
+        ownership_contract = self._build_ownership_contract(row, base, media_contract)
         product_workspace_assets = self._build_product_workspace_assets(
             row=row,
             base_record=base,
@@ -145,13 +146,20 @@ class AdminReadService:
             "FinalMediaStatus": final_media_status,
         }
 
-    def _build_ownership_contract(self, row: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _build_ownership_contract(
+        self,
+        row: Dict[str, Any],
+        base_record: Dict[str, Any],
+        media_contract: Dict[str, Any],
+    ) -> Dict[str, Any]:
         product_code = self._clean(row.get("ProductCode"))
 
         owned_assets = self._parse_json_value(row.get("OwnedAssetsJSON"))
         if not isinstance(owned_assets, list):
             owned_assets = []
 
+        normalized_owned_assets = self._normalize_owned_assets(owned_assets)
         primary_image_asset_id = self._clean(row.get("PrimaryImageAssetID"))
         primary_video_asset_id = self._clean(row.get("PrimaryVideoAssetID"))
 
@@ -159,17 +167,69 @@ class AdminReadService:
         if not isinstance(gallery_asset_ids, list):
             gallery_asset_ids = []
 
+        normalized_gallery_asset_ids = [
+            self._clean(asset_id)
+            for asset_id in gallery_asset_ids
+            if self._clean(asset_id)
+        ]
+
+        owned_primary_image_asset = self._find_owned_asset_by_id(
+            normalized_owned_assets,
+            primary_image_asset_id,
+        )
+        owned_primary_video_asset = self._find_owned_asset_by_id(
+            normalized_owned_assets,
+            primary_video_asset_id,
+        )
+        owned_gallery_assets = self._find_owned_assets_by_ids(
+            normalized_owned_assets,
+            normalized_gallery_asset_ids,
+        )
+
+        stable_preview_image_url = self._first_non_empty(
+            owned_primary_image_asset.get("preview_url") if owned_primary_image_asset else "",
+            owned_primary_image_asset.get("drive_url") if owned_primary_image_asset else "",
+            media_contract.get("final_primary_media_url"),
+            base_record.get("final_image_url"),
+            base_record.get("source_image_url"),
+        )
+
+        stable_preview_video_url = self._first_non_empty(
+            owned_primary_video_asset.get("preview_url") if owned_primary_video_asset else "",
+            owned_primary_video_asset.get("drive_url") if owned_primary_video_asset else "",
+        )
+
+        has_owned_primary_image = bool(owned_primary_image_asset)
+        has_owned_primary_video = bool(owned_primary_video_asset)
+        owned_gallery_count = len(owned_gallery_assets)
+
+        if has_owned_primary_image or has_owned_primary_video or owned_gallery_count > 0:
+            ownership_status = "owned"
+        elif normalized_owned_assets:
+            ownership_status = "partial"
+        else:
+            ownership_status = "not_owned"
+
         return {
             "product_code": product_code,
             "ProductCode": product_code,
-            "owned_assets_json": owned_assets,
-            "OwnedAssetsJSON": owned_assets,
+            "owned_assets_json": normalized_owned_assets,
+            "OwnedAssetsJSON": normalized_owned_assets,
             "primary_image_asset_id": primary_image_asset_id,
             "PrimaryImageAssetID": primary_image_asset_id,
             "primary_video_asset_id": primary_video_asset_id,
             "PrimaryVideoAssetID": primary_video_asset_id,
-            "gallery_asset_ids_json": gallery_asset_ids,
-            "GalleryAssetIDsJSON": gallery_asset_ids,
+            "gallery_asset_ids_json": normalized_gallery_asset_ids,
+            "GalleryAssetIDsJSON": normalized_gallery_asset_ids,
+            "owned_primary_image_asset": owned_primary_image_asset,
+            "owned_primary_video_asset": owned_primary_video_asset,
+            "owned_gallery_assets": owned_gallery_assets,
+            "stable_preview_image_url": stable_preview_image_url,
+            "stable_preview_video_url": stable_preview_video_url,
+            "has_owned_primary_image": has_owned_primary_image,
+            "has_owned_primary_video": has_owned_primary_video,
+            "owned_gallery_count": owned_gallery_count,
+            "ownership_status": ownership_status,
         }
 
     def _build_content_visibility(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -316,6 +376,90 @@ class AdminReadService:
         if isinstance(parsed, list):
             return parsed
         return []
+
+
+    def _normalize_owned_assets(self, raw_assets: List[Any]) -> List[Dict[str, Any]]:
+        normalized_assets: List[Dict[str, Any]] = []
+
+        if not isinstance(raw_assets, list):
+            return normalized_assets
+
+        for asset in raw_assets:
+            normalized = self._normalize_owned_asset(asset)
+            if normalized:
+                normalized_assets.append(normalized)
+
+        return normalized_assets
+
+    def _normalize_owned_asset(self, asset: Any) -> Dict[str, Any] | None:
+        if not isinstance(asset, dict):
+            return None
+
+        asset_id = self._clean(asset.get("asset_id"))
+        product_code = self._clean(asset.get("product_code"))
+        kind = self._clean(asset.get("kind")).lower() or "image"
+        role = self._clean(asset.get("role")).lower() or "additional"
+        source_family = self._clean(asset.get("source_family"))
+        source_name = self._clean(asset.get("source_name"))
+        source_tag = self._clean(asset.get("source_tag"))
+        original_url = self._clean(asset.get("original_url"))
+        storage_status = self._clean(asset.get("storage_status"))
+        drive_file_id = self._clean(asset.get("drive_file_id"))
+        drive_url = self._clean(asset.get("drive_url"))
+        preview_url = self._clean(asset.get("preview_url"))
+        mime_type = self._clean(asset.get("mime_type"))
+        created_at = self._clean(asset.get("created_at"))
+        is_active = bool(asset.get("is_active", True))
+
+        if not asset_id:
+            return None
+
+        return {
+            "asset_id": asset_id,
+            "product_code": product_code,
+            "kind": kind,
+            "role": role,
+            "source_family": source_family,
+            "source_name": source_name,
+            "source_tag": source_tag,
+            "original_url": original_url,
+            "storage_status": storage_status,
+            "drive_file_id": drive_file_id,
+            "drive_url": drive_url,
+            "preview_url": preview_url,
+            "mime_type": mime_type,
+            "created_at": created_at,
+            "is_active": is_active,
+        }
+
+    def _find_owned_asset_by_id(
+        self,
+        owned_assets: List[Dict[str, Any]],
+        asset_id: str,
+    ) -> Dict[str, Any]:
+        target_asset_id = self._clean(asset_id)
+        if not target_asset_id:
+            return {}
+
+        for asset in owned_assets:
+            if self._clean(asset.get("asset_id")) == target_asset_id:
+                return dict(asset)
+
+        return {}
+
+    def _find_owned_assets_by_ids(
+        self,
+        owned_assets: List[Dict[str, Any]],
+        asset_ids: List[str],
+    ) -> List[Dict[str, Any]]:
+        ordered_assets: List[Dict[str, Any]] = []
+
+        for asset_id in asset_ids:
+            asset = self._find_owned_asset_by_id(owned_assets, asset_id)
+            if asset:
+                ordered_assets.append(asset)
+
+        return ordered_assets
 
     # ------------------------------------------------------------------
     # Workspace Read Contract helpers
