@@ -1,3 +1,4 @@
+
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -302,6 +303,7 @@ class AdminReadService:
 
         original_assets = self._build_original_workspace_assets(base_record)
         cj_assets, pexels_assets, other_matched_assets = self._build_matched_workspace_assets(raw_matched_candidates)
+        manual_assets = self._extract_manual_workspace_assets(row)
         final_assets = self._extract_final_workspace_assets(
             row=row,
             base_record=base_record,
@@ -311,15 +313,14 @@ class AdminReadService:
             pexels_assets=pexels_assets,
             other_matched_assets=other_matched_assets,
         )
-        manual_assets = self._extract_manual_workspace_assets(row)
 
         ordered_assets = (
             original_assets
             + cj_assets
             + pexels_assets
+            + manual_assets
             + other_matched_assets
             + final_assets
-            + manual_assets
         )
 
         return self._dedupe_workspace_assets(ordered_assets)
@@ -335,6 +336,18 @@ class AdminReadService:
                 candidates.append(candidate)
 
         return candidates
+
+    def _read_manual_assets_json(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw_manual_assets = self._parse_json_list(row.get("ManualAssetsJSON"))
+        if not isinstance(raw_manual_assets, list):
+            return []
+
+        manual_assets: List[Dict[str, Any]] = []
+        for asset in raw_manual_assets:
+            if isinstance(asset, dict):
+                manual_assets.append(asset)
+
+        return manual_assets
 
     def _infer_workspace_source_meta(self, source_tag: str) -> Dict[str, str]:
         normalized = self._clean(source_tag).lower()
@@ -626,54 +639,40 @@ class AdminReadService:
         return final_assets
 
     def _extract_manual_workspace_assets(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw_manual_assets = self._read_manual_assets_json(row)
+        if not raw_manual_assets:
+            return []
+
         manual_assets: List[Dict[str, Any]] = []
 
-        for key, value in row.items():
-            lowered = self._clean(key).lower()
-            if not lowered.startswith("manual"):
-                continue
+        for index, raw_asset in enumerate(raw_manual_assets, start=1):
+            fallback_type = self._normalize_media_type(raw_asset.get("type"), self._first_non_empty(
+                raw_asset.get("url"),
+                raw_asset.get("image_url"),
+                raw_asset.get("video_url"),
+                raw_asset.get("src"),
+            ))
+            fallback_role = "video" if fallback_type == "video" else "additional"
+            fallback_label = f"Manual {'Video' if fallback_type == 'video' else 'Image'} {index}"
 
-            if "url" in lowered:
-                asset = self._normalize_workspace_asset(
-                    {
-                        "url": value,
-                        "label": key,
-                    },
-                    fallback_source_tag="manual_ref",
-                    fallback_role="additional",
-                    fallback_label=key,
-                    is_final=False,
-                )
-                if asset:
-                    manual_assets.append(asset)
-
-            elif "json" in lowered:
-                parsed = self._parse_json_value(value)
-
-                if isinstance(parsed, list):
-                    for index, item in enumerate(parsed, start=1):
-                        asset = self._normalize_workspace_asset(
-                            item,
-                            default_rank=index,
-                            fallback_source_tag="manual_ref",
-                            fallback_role="additional",
-                            fallback_label=f"{key} {index}",
-                            is_final=False,
-                        )
-                        if asset:
-                            manual_assets.append(asset)
-
-                elif isinstance(parsed, dict):
-                    asset = self._normalize_workspace_asset(
-                        parsed,
-                        default_rank=1,
-                        fallback_source_tag="manual_ref",
-                        fallback_role="additional",
-                        fallback_label=key,
-                        is_final=False,
-                    )
-                    if asset:
-                        manual_assets.append(asset)
+            normalized = self._normalize_workspace_asset(
+                {
+                    **raw_asset,
+                    "source_family": "manual",
+                    "source_name": "manual",
+                    "source_tag": "manual_ref",
+                },
+                default_rank=200 + index,
+                fallback_source_tag="manual_ref",
+                fallback_role=fallback_role,
+                fallback_label=fallback_label,
+                is_final=False,
+            )
+            if normalized:
+                normalized["source_family"] = "manual"
+                normalized["source_name"] = "manual"
+                normalized["source_tag"] = "manual_ref"
+                manual_assets.append(normalized)
 
         return manual_assets
 
