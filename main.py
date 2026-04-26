@@ -1218,6 +1218,160 @@ def admin_ui():
             word-break: break-word;
           }
 
+
+          .workspace-block {
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 1px solid #eef0f2;
+          }
+
+          .workspace-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+          }
+
+          .workspace-head h3 {
+            margin: 0;
+            font-size: 15px;
+          }
+
+          .workspace-head p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 13px;
+          }
+
+          .workspace-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 12px;
+          }
+
+          .workspace-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            background: #ffffff;
+            overflow: hidden;
+          }
+
+          .workspace-preview {
+            width: 100%;
+            height: 160px;
+            background: #f3f4f6;
+            border-bottom: 1px solid #eef0f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: #6b7280;
+            font-size: 12px;
+          }
+
+          .workspace-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+
+          .workspace-video-placeholder {
+            padding: 16px;
+            text-align: center;
+            line-height: 1.5;
+          }
+
+          .workspace-body {
+            padding: 12px;
+          }
+
+          .workspace-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 8px;
+            word-break: break-word;
+          }
+
+          .workspace-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+          }
+
+          .workspace-foot {
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.5;
+            word-break: break-word;
+          }
+
+          .badge-source-original {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+            color: #4338ca;
+          }
+
+          .badge-source-cj {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: #065f46;
+          }
+
+          .badge-source-pexels {
+            background: #fff7ed;
+            border-color: #fed7aa;
+            color: #9a3412;
+          }
+
+          .badge-source-manual {
+            background: #f5f3ff;
+            border-color: #ddd6fe;
+            color: #6d28d9;
+          }
+
+          .badge-source-final {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+          }
+
+          .badge-type-video {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #b91c1c;
+          }
+
+          .badge-is-final {
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+            font-weight: 700;
+          }
+
+          .workspace-link {
+            font-size: 12px;
+            color: #2563eb;
+            text-decoration: none;
+          }
+
+          .workspace-link:hover {
+            text-decoration: underline;
+          }
+
+          .workspace-empty {
+            padding: 14px 12px;
+            border: 1px dashed #d1d5db;
+            border-radius: 12px;
+            color: #6b7280;
+            font-size: 13px;
+            background: #fafafa;
+          }
+
           @media (max-width: 1100px) {
             .layout {
               grid-template-columns: 1fr;
@@ -1336,6 +1490,146 @@ def admin_ui():
               .replace(/"/g, "&quot;")
               .replace(/'/g, "&#39;");
           }
+
+
+          function normalizeWorkspaceAssets(record) {
+            const assets = Array.isArray(record?.product_workspace_assets)
+              ? record.product_workspace_assets
+              : [];
+
+            return assets.filter((asset) => asset && asset.url);
+          }
+
+          function getWorkspaceSourceBadgeClass(asset) {
+            const sourceTag = String(asset?.source_tag || "").toLowerCase();
+            const sourceFamily = String(asset?.source_family || "").toLowerCase();
+
+            if (sourceTag === "seed_media" || sourceFamily === "seed") {
+              return "badge-source-original";
+            }
+            if (sourceTag === "cj_supplier" || sourceTag === "cj" || sourceFamily === "supplier") {
+              return "badge-source-cj";
+            }
+            if (sourceTag === "pexels" || sourceFamily === "fallback") {
+              return "badge-source-pexels";
+            }
+            if (sourceTag === "manual_ref" || sourceFamily === "manual") {
+              return "badge-source-manual";
+            }
+            if (sourceTag === "final_selected" || sourceFamily === "final") {
+              return "badge-source-final";
+            }
+            return "";
+          }
+
+          function renderWorkspaceAssetPreview(asset) {
+            const type = String(asset?.type || "image").toLowerCase();
+            const url = escapeHtml(asset?.url || "");
+            const label = escapeHtml(asset?.label || "Workspace Asset");
+
+            if (type === "video") {
+              return `
+                <div class="workspace-preview">
+                  <div class="workspace-video-placeholder">
+                    <div><strong>Video Preview</strong></div>
+                    <div style="margin-top:6px;">No heavy player in this slice</div>
+                  </div>
+                </div>
+              `;
+            }
+
+            return `
+              <div class="workspace-preview">
+                <img src="${url}" alt="${label}" loading="lazy" />
+              </div>
+            `;
+          }
+
+          function renderWorkspaceAssetCard(asset) {
+            const sourceFamily = escapeHtml(asset?.source_family || "unknown");
+            const sourceName = escapeHtml(asset?.source_name || "unknown");
+            const sourceTag = escapeHtml(asset?.source_tag || "unknown_source");
+            const type = escapeHtml(asset?.type || "image");
+            const role = escapeHtml(asset?.role || "additional");
+            const priority = escapeHtml(asset?.priority ?? "");
+            const rank = escapeHtml(asset?.rank ?? "");
+            const url = escapeHtml(asset?.url || "");
+            const label = escapeHtml(asset?.label || "Workspace Asset");
+            const isFinal = Boolean(asset?.is_final);
+            const sourceBadgeClass = getWorkspaceSourceBadgeClass(asset);
+            const typeBadgeClass = type.toLowerCase() === "video" ? "badge-type-video" : "";
+
+            return `
+              <div class="workspace-card">
+                ${renderWorkspaceAssetPreview(asset)}
+                <div class="workspace-body">
+                  <div class="workspace-label">${label}</div>
+
+                  <div class="workspace-meta">
+                    <span class="badge ${sourceBadgeClass}">${sourceName}</span>
+                    <span class="badge ${typeBadgeClass}">${type}</span>
+                    <span class="badge">${role}</span>
+                    ${isFinal ? `<span class="badge badge-is-final">final</span>` : ``}
+                  </div>
+
+                  <div class="workspace-foot">
+                    <div>source: ${sourceFamily} / ${sourceTag}</div>
+                    <div>rank: ${rank || "-"} · priority: ${priority || "-"}</div>
+                    <div style="margin-top:6px;">
+                      <a class="workspace-link" href="${url}" target="_blank" rel="noreferrer">Open asset</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+
+          function renderProductWorkspace(record) {
+            const assets = normalizeWorkspaceAssets(record);
+
+            if (!assets.length) {
+              return `
+                <div class="workspace-block">
+                  <div class="workspace-head">
+                    <div>
+                      <h3>Product Workspace</h3>
+                      <p>Unified read-only preview of current product assets.</p>
+                    </div>
+                  </div>
+                  <div class="workspace-empty">No workspace assets available for this product yet.</div>
+                </div>
+              `;
+            }
+
+            const imageAssets = assets.filter((asset) => String(asset?.type || "image").toLowerCase() !== "video");
+            const videoAssets = assets.filter((asset) => String(asset?.type || "").toLowerCase() === "video");
+
+            const renderGroup = (title, items) => {
+              if (!items.length) return "";
+              return `
+                <div style="margin-top:12px;">
+                  <div style="font-size:13px;color:#6b7280;margin-bottom:8px;">${title}</div>
+                  <div class="workspace-grid">
+                    ${items.map(renderWorkspaceAssetCard).join("")}
+                  </div>
+                </div>
+              `;
+            };
+
+            return `
+              <div class="workspace-block">
+                <div class="workspace-head">
+                  <div>
+                    <h3>Product Workspace</h3>
+                    <p>Read-only preview from product_workspace_assets.</p>
+                  </div>
+                </div>
+                ${renderGroup("Images", imageAssets)}
+                ${renderGroup("Videos", videoAssets)}
+              </div>
+            `;
+          }
+
 
           function normalizeImageUrl(url) {
             if (!url) return "";
@@ -1999,6 +2293,7 @@ def admin_ui():
               </div>
 
               ${renderMatchedMedia(record)}
+              ${renderProductWorkspace(record)}
               ${renderContentPreview(record)}
             `;
           }
