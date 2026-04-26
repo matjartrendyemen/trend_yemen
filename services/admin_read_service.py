@@ -1,4 +1,3 @@
-
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -34,6 +33,7 @@ class AdminReadService:
     def _build_admin_record(self, row: Dict[str, Any]) -> Dict[str, Any]:
         base = self._build_base_record(row)
         media_contract = self._build_media_contract(row, base)
+        ownership_contract = self._build_ownership_contract(row)
         product_workspace_assets = self._build_product_workspace_assets(
             row=row,
             base_record=base,
@@ -55,6 +55,7 @@ class AdminReadService:
         return {
             **base,
             **media_contract,
+            **ownership_contract,
             **content_visibility,
             **failure_visibility,
             **stuck_visibility,
@@ -142,6 +143,33 @@ class AdminReadService:
             "FinalGalleryMediaJSON": final_gallery_media,
             "final_media_status": final_media_status,
             "FinalMediaStatus": final_media_status,
+        }
+
+    def _build_ownership_contract(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        product_code = self._clean(row.get("ProductCode"))
+
+        owned_assets = self._parse_json_value(row.get("OwnedAssetsJSON"))
+        if not isinstance(owned_assets, list):
+            owned_assets = []
+
+        primary_image_asset_id = self._clean(row.get("PrimaryImageAssetID"))
+        primary_video_asset_id = self._clean(row.get("PrimaryVideoAssetID"))
+
+        gallery_asset_ids = self._parse_json_value(row.get("GalleryAssetIDsJSON"))
+        if not isinstance(gallery_asset_ids, list):
+            gallery_asset_ids = []
+
+        return {
+            "product_code": product_code,
+            "ProductCode": product_code,
+            "owned_assets_json": owned_assets,
+            "OwnedAssetsJSON": owned_assets,
+            "primary_image_asset_id": primary_image_asset_id,
+            "PrimaryImageAssetID": primary_image_asset_id,
+            "primary_video_asset_id": primary_video_asset_id,
+            "PrimaryVideoAssetID": primary_video_asset_id,
+            "gallery_asset_ids_json": gallery_asset_ids,
+            "GalleryAssetIDsJSON": gallery_asset_ids,
         }
 
     def _build_content_visibility(self, row: Dict[str, Any]) -> Dict[str, Any]:
