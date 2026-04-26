@@ -1631,6 +1631,76 @@ def admin_ui():
             background: #fafafa;
           }
 
+          .manual-upload-block {
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 1px solid #eef0f2;
+          }
+
+          .manual-upload-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+          }
+
+          .manual-upload-head h3 {
+            margin: 0;
+            font-size: 15px;
+          }
+
+          .manual-upload-head p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 13px;
+          }
+
+          .manual-upload-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+          }
+
+          .manual-upload-field {
+            display: grid;
+            gap: 6px;
+          }
+
+          .manual-upload-field label {
+            font-size: 13px;
+            color: #374151;
+            font-weight: 600;
+          }
+
+          .manual-upload-field input[type="file"] {
+            display: block;
+            width: 100%;
+            font-size: 12px;
+            color: #111827;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            padding: 10px;
+            box-sizing: border-box;
+          }
+
+          .manual-upload-help {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.5;
+          }
+
+          .manual-upload-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+          }
+
           @media (max-width: 1100px) {
             .layout {
               grid-template-columns: 1fr;
@@ -2559,6 +2629,35 @@ def admin_ui():
                 <a class="json-link" href="${escapeHtml(jsonUrl)}" target="_blank">View JSON</a>
               </div>
 
+              <div class="manual-upload-block">
+                <div class="manual-upload-head">
+                  <div>
+                    <h3>Manual Asset Upload</h3>
+                    <p>Upload local image/video references for this product row only.</p>
+                  </div>
+                </div>
+
+                <div class="manual-upload-grid">
+                  <div class="manual-upload-field">
+                    <label>Images</label>
+                    <input type="file" class="manual-images-input" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple />
+                  </div>
+
+                  <div class="manual-upload-field">
+                    <label>Video (optional MP4)</label>
+                    <input type="file" class="manual-video-input" accept=".mp4,video/mp4" />
+                  </div>
+                </div>
+
+                <div class="manual-upload-help">
+                  Images: jpg/jpeg/png/webp up to 10 MB each. Video: mp4 up to 25 MB.
+                </div>
+
+                <div class="manual-upload-actions">
+                  <button type="button" class="action-secondary" onclick="uploadManualAssetsAction('${escapeHtml(String(rowId))}', this)">Upload Manual Assets</button>
+                </div>
+              </div>
+
               ${renderMatchedMedia(record)}
               ${renderProductWorkspace(record)}
               ${renderContentPreview(record)}
@@ -2930,6 +3029,84 @@ def admin_ui():
             } catch (error) {
               showError(error.message || "Unknown error");
               setStatus("Media matching failed");
+            } finally {
+              restoreButton(buttonEl, buttonState);
+            }
+          }
+
+          async function uploadManualAssetsAction(rowId, buttonEl) {
+            if (!rowId || rowId === "—") return;
+
+            clearError();
+
+            const container = buttonEl ? buttonEl.closest(".manual-upload-block") : null;
+            if (!container) {
+              showError("Manual upload form not found");
+              setStatus("Manual asset upload failed");
+              return;
+            }
+
+            const imageInput = container.querySelector(".manual-images-input");
+            const videoInput = container.querySelector(".manual-video-input");
+            const imageFiles = imageInput && imageInput.files ? Array.from(imageInput.files) : [];
+            const videoFile = videoInput && videoInput.files && videoInput.files[0] ? videoInput.files[0] : null;
+
+            if (!imageFiles.length && !videoFile) {
+              showError("Choose one or more images and/or one mp4 video first.");
+              setStatus("Manual asset upload failed");
+              return;
+            }
+
+            const formData = new FormData();
+            formData.append("row_id", rowId);
+
+            imageFiles.forEach((file) => {
+              formData.append("images[]", file);
+            });
+
+            if (videoFile) {
+              formData.append("video", videoFile);
+            }
+
+            const buttonState = setButtonBusy(buttonEl, "Uploading...");
+            setStatus("Uploading manual assets for row " + rowId + "...");
+
+            try {
+              const response = await fetch("/admin/upload_manual_assets", {
+                method: "POST",
+                body: formData
+              });
+
+              let payload = null;
+              try {
+                payload = await response.json();
+              } catch (parseError) {
+                payload = null;
+              }
+
+              if (!response.ok) {
+                const errorMessage = (payload && (payload.error || payload.message)) || ("Upload failed: " + response.status);
+                throw new Error(errorMessage);
+              }
+
+              const imagesUploaded = Number(payload?.images_uploaded || 0);
+              const videoUploaded = payload?.video_uploaded ? " + video" : "";
+              const count = Number(payload?.manual_assets_count || 0);
+
+              if (imageInput) imageInput.value = "";
+              if (videoInput) videoInput.value = "";
+
+              selectedRowId = rowId;
+              await loadRegistry({
+                keepSelection: true,
+                preferredRowId: rowId
+              });
+
+              showFlash(`Manual assets uploaded: ${imagesUploaded} image(s)${videoUploaded}. Total manual assets: ${count}`);
+              setStatus("Manual asset upload completed");
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Manual asset upload failed");
             } finally {
               restoreButton(buttonEl, buttonState);
             }
