@@ -12,6 +12,7 @@ from storage.sheets_store import SheetsStore
 from services.admin_read_service import AdminReadService
 from services.content_output_service import ContentOutputService
 from services.media_matching_service import MediaMatchingService
+from services.manual_asset_service import ManualAssetService
 
 app = Flask(__name__)
 
@@ -30,6 +31,14 @@ SEED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_ADMIN_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
+MANUAL_ASSET_SUBDIR = "manual_assets"
+MANUAL_ASSET_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MANUAL_ASSET_VIDEO_EXTENSIONS = {".mp4"}
+MANUAL_ASSET_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+MANUAL_ASSET_VIDEO_MAX_BYTES = 25 * 1024 * 1024
+MANUAL_ASSET_IMAGE_MIME_PREFIX = "image/"
+MANUAL_ASSET_VIDEO_MIME = "video/mp4"
+
 
 def _ensure_seed_image_dir():
     SEED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -38,6 +47,187 @@ def _ensure_seed_image_dir():
 
 def _build_seed_image_url(filename):
     return url_for("admin_seed_image", filename=filename, _external=True)
+
+
+def _build_manual_asset_url(relative_path):
+    normalized_path = str(relative_path or "").strip().lstrip("/")
+    return url_for("admin_seed_image", filename=f"{MANUAL_ASSET_SUBDIR}/{normalized_path}", _external=True)
+
+
+def _get_manual_asset_service():
+    return ManualAssetService(
+        base_dir=SEED_IMAGE_DIR / MANUAL_ASSET_SUBDIR,
+        url_builder=_build_manual_asset_url,
+    )
+
+
+def _has_allowed_manual_image_extension(filename):
+    return Path(str(filename or "")).suffix.lower() in MANUAL_ASSET_IMAGE_EXTENSIONS
+
+
+def _has_allowed_manual_video_extension(filename):
+    return Path(str(filename or "")).suffix.lower() in MANUAL_ASSET_VIDEO_EXTENSIONS
+
+
+def _read_uploaded_file_bytes(file_storage):
+    if file_storage is None:
+        return b""
+
+    try:
+        file_storage.stream.seek(0)
+    except Exception:
+        pass
+
+    file_bytes = file_storage.read()
+
+    try:
+        file_storage.stream.seek(0)
+    except Exception:
+        pass
+
+    return file_bytes or b""
+
+
+def _validate_manual_image_file(file_storage):
+    if file_storage is None or not str(file_storage.filename or "").strip():
+        raise ValueError("Missing image file")
+
+    filename = str(file_storage.filename or "").strip()
+    mimetype = str(file_storage.mimetype or "").strip().lower()
+
+    if not _has_allowed_manual_image_extension(filename):
+        raise ValueError("Unsupported image file type. Allowed: JPG, JPEG, PNG, WEBP")
+
+    if mimetype and not mimetype.startswith(MANUAL_ASSET_IMAGE_MIME_PREFIX):
+        raise ValueError("Uploaded image must be a supported image file")
+
+    file_bytes = _read_uploaded_file_bytes(file_storage)
+    if not file_bytes:
+        raise ValueError(f"Image file is empty: {filename}")
+
+    if len(file_bytes) > MANUAL_ASSET_IMAGE_MAX_BYTES:
+        raise ValueError(f"Image exceeds 10 MB limit: {filename}")
+
+    return {
+        "filename": filename,
+        "mimetype": mimetype,
+        "bytes": file_bytes,
+        "size_bytes": len(file_bytes),
+    }
+
+
+def _validate_manual_video_file(file_storage):
+    if file_storage is None or not str(file_storage.filename or "").strip():
+        raise ValueError("Missing video file")
+
+    filename = str(file_storage.filename or "").strip()
+    mimetype = str(file_storage.mimetype or "").strip().lower()
+
+    if not _has_allowed_manual_video_extension(filename):
+        raise ValueError("Unsupported video file type. Allowed: MP4")
+
+    if mimetype != MANUAL_ASSET_VIDEO_MIME:
+        raise ValueError("Uploaded video must be video/mp4")
+
+    file_bytes = _read_uploaded_file_bytes(file_storage)
+    if not file_bytes:
+        raise ValueError("Video file is empty")
+
+    if len(file_bytes) > MANUAL_ASSET_VIDEO_MAX_BYTES:
+        raise ValueError("Video exceeds 25 MB limit")
+
+    return {
+        "filename": filename,
+        "mimetype": mimetype,
+        "bytes": file_bytes,
+        "size_bytes": len(file_bytes),
+    }
+
+
+def _find_sheet_row_record(row_id):
+    normalized_row_id = str(row_id or "").strip()
+    if not normalized_row_id:
+        return None
+
+    rows = sheets.sheet.get_all_records()
+    for row in rows:
+        if str(row.get("RowID", "")).strip() == normalized_row_id:
+            return row
+    return None
+
+
+def _parse_json_list_value(value):
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return value
+
+    if isinstance(value, dict):
+        return [value]
+
+    text = str(value or "").strip()
+    if not text:
+        return []
+
+    try:
+        parsed = __import__("json").loads(text)
+    except Exception:
+        return []
+
+    if isinstance(parsed, list):
+        return parsed
+
+    if isinstance(parsed, dict):
+        return [parsed]
+
+    return []
+
+
+def _ensure_sheet_column(column_name):
+    headers = sheets.sheet.row_values(1)
+    normalized_headers = [str(header or "").strip() for header in headers]
+
+    if column_name in normalized_headers:
+        column_index = normalized_headers.index(column_name) + 1
+    else:
+        column_index = len(normalized_headers) + 1
+        sheets.sheet.update_cell(1, column_index, column_name)
+
+    if hasattr(sheets, "col_map") and isinstance(getattr(sheets, "col_map"), dict):
+        sheets.col_map[column_name] = column_index
+
+    return column_index
+
+
+def _write_manual_assets_json(row_id, manual_assets):
+    row_index = sheets._get_row_index_by_id(row_id)
+    if not row_index:
+        raise ValueError("Row not found")
+
+    column_index = _ensure_sheet_column("ManualAssetsJSON")
+    serialized = __import__("json").dumps(manual_assets, ensure_ascii=False)
+    sheets.sheet.update_cell(row_index, column_index, serialized)
+
+
+def _get_uploaded_images_from_request():
+    images = []
+    images.extend(request.files.getlist("images[]"))
+    images.extend(request.files.getlist("images"))
+
+    deduped = []
+    seen = set()
+    for item in images:
+        if item is None:
+            continue
+        identifier = id(item)
+        if identifier in seen:
+            continue
+        seen.add(identifier)
+        if str(item.filename or "").strip():
+            deduped.append(item)
+
+    return deduped
 
 
 def _error_response(message, status_code=400):
@@ -574,6 +764,68 @@ def admin_create_product():
     except Exception:
         _remove_seed_image(file_path)
         return _error_response("Failed to create product", 500)
+
+
+@app.route("/admin/upload_manual_assets", methods=["POST"])
+def admin_upload_manual_assets():
+    content_type = str(request.content_type or "").lower()
+    if "multipart/form-data" not in content_type:
+        return _error_response("Content-Type must be multipart/form-data")
+
+    row_id = str(request.form.get("row_id", "") or "").strip()
+    if not row_id:
+        return _error_response("Missing row_id")
+
+    row_record = _find_sheet_row_record(row_id)
+    if not row_record:
+        return _error_response("Row not found", 404)
+
+    image_files = _get_uploaded_images_from_request()
+    video_file = request.files.get("video")
+    has_video = video_file is not None and str(video_file.filename or "").strip()
+
+    if not image_files and not has_video:
+        return _error_response("No manual assets provided. Upload images[] and/or video")
+
+    try:
+        validated_images = [_validate_manual_image_file(item) for item in image_files]
+
+        validated_video = None
+        if has_video:
+            validated_video = _validate_manual_video_file(video_file)
+    except ValueError as e:
+        return _error_response(str(e), 400)
+
+    existing_manual_assets = _parse_json_list_value(row_record.get("ManualAssetsJSON"))
+    manual_asset_service = _get_manual_asset_service()
+
+    try:
+        new_manual_assets = manual_asset_service.save_assets(
+            row_id=row_id,
+            images=validated_images,
+            video=validated_video,
+            existing_assets=existing_manual_assets,
+        )
+    except ValueError as e:
+        return _error_response(str(e), 400)
+    except Exception as e:
+        return _error_response(f"Manual asset save failed: {e}", 500)
+
+    merged_manual_assets = list(existing_manual_assets) + list(new_manual_assets)
+
+    try:
+        _write_manual_assets_json(row_id, merged_manual_assets)
+    except Exception as e:
+        manual_asset_service.cleanup_saved_assets(new_manual_assets)
+        return _error_response(f"Failed to write ManualAssetsJSON: {e}", 500)
+
+    return jsonify({
+        "status": "ok",
+        "row_id": row_id,
+        "images_uploaded": len(validated_images),
+        "video_uploaded": bool(validated_video),
+        "manual_assets_count": len(merged_manual_assets),
+    })
 
 
 @app.route("/admin/ui")
