@@ -13,6 +13,7 @@ from services.admin_read_service import AdminReadService
 from services.content_output_service import ContentOutputService
 from services.media_matching_service import MediaMatchingService
 from services.manual_asset_service import ManualAssetService
+from services.drive_asset_service import DriveAssetService
 
 app = Flask(__name__)
 
@@ -59,6 +60,10 @@ def _get_manual_asset_service():
         base_dir=SEED_IMAGE_DIR / MANUAL_ASSET_SUBDIR,
         url_builder=_build_manual_asset_url,
     )
+
+
+def _get_drive_asset_service():
+    return DriveAssetService(seed_base_dir=SEED_IMAGE_DIR)
 
 
 def _has_allowed_manual_image_extension(filename):
@@ -208,6 +213,83 @@ def _write_manual_assets_json(row_id, manual_assets):
     column_index = _ensure_sheet_column("ManualAssetsJSON")
     serialized = __import__("json").dumps(manual_assets, ensure_ascii=False)
     sheets.sheet.update_cell(row_index, column_index, serialized)
+
+
+def _find_admin_record(row_id):
+    normalized_row_id = str(row_id or "").strip()
+    if not normalized_row_id:
+        return None
+
+    records = admin_read_service.get_all_admin_records()
+    return next((item for item in records if str(item.get("row_id") or "").strip() == normalized_row_id), None)
+
+
+def _find_workspace_asset_by_url(record, media_url):
+    normalized_media_url = str(media_url or "").strip()
+    if not normalized_media_url:
+        return None
+
+    assets = record.get("product_workspace_assets") if isinstance(record, dict) else []
+    if not isinstance(assets, list):
+        return None
+
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        if str(asset.get("url") or "").strip() == normalized_media_url:
+            return asset
+
+    return None
+
+
+def _get_primary_owned_role(media_type):
+    normalized_media_type = str(media_type or "image").strip().lower()
+    return "primary_video" if normalized_media_type == "video" else "primary_image"
+
+
+def _find_existing_committed_owned_asset(owned_assets, media_url, media_type):
+    normalized_media_url = str(media_url or "").strip()
+    normalized_media_type = str(media_type or "image").strip().lower() or "image"
+    target_role = _get_primary_owned_role(normalized_media_type)
+
+    for asset in owned_assets or []:
+        if not isinstance(asset, dict):
+            continue
+
+        if str(asset.get("original_url") or "").strip() != normalized_media_url:
+            continue
+
+        if str(asset.get("kind") or "").strip().lower() != normalized_media_type:
+            continue
+
+        if str(asset.get("role") or "").strip() != target_role:
+            continue
+
+        if str(asset.get("storage_status") or "").strip() != "committed":
+            continue
+
+        if asset.get("is_active") is False:
+            continue
+
+        return asset
+
+    return None
+
+
+def _deactivate_owned_assets_by_role(owned_assets, role):
+    normalized_role = str(role or "").strip()
+    updated_assets = []
+
+    for asset in owned_assets or []:
+        if not isinstance(asset, dict):
+            continue
+
+        item = dict(asset)
+        if str(item.get("role") or "").strip() == normalized_role:
+            item["is_active"] = False
+        updated_assets.append(item)
+
+    return updated_assets
 
 
 def _get_uploaded_images_from_request():
@@ -640,6 +722,124 @@ def admin_select_final_media():
             "status": "error",
             "message": str(e)
         }), 500
+
+
+@app.route("/admin/commit_final_asset", methods=["POST"])
+def admin_commit_final_asset():
+    row_id = request.args.get("id", "").strip() or str(request.form.get("row_id", "") or "").strip()
+
+    if not row_id:
+        return jsonify({
+            "status": "error",
+            "message": "Missing id"
+        }), 400
+
+    row_record = _find_sheet_row_record(row_id)
+    if not row_record:
+        return jsonify({
+            "status": "error",
+            "message": "Row not found"
+        }), 404
+
+    final_media_url = str(row_record.get("FinalPrimaryMediaURL") or "").strip()
+    final_media_type = str(row_record.get("FinalPrimaryMediaType") or "image").strip().lower() or "image"
+
+    if not final_media_url:
+        return jsonify({
+            "status": "error",
+            "message": "No selected final media found for this row"
+        }), 409
+
+    if final_media_type not in {"image", "video"}:
+        return jsonify({
+            "status": "error",
+            "message": "Unsupported final media type"
+        }), 409
+
+    product_code = str(row_record.get("ProductCode") or "").strip() or row_id
+    owned_assets = _parse_json_list_value(row_record.get("OwnedAssetsJSON"))
+    gallery_asset_ids = _parse_json_list_value(row_record.get("GalleryAssetIDsJSON"))
+
+    role = _get_primary_owned_role(final_media_type)
+    existing_asset = _find_existing_committed_owned_asset(owned_assets, final_media_url, final_media_type)
+
+    if existing_asset:
+        ownership_fields = {
+            "ProductCode": product_code,
+            "OwnedAssetsJSON": owned_assets,
+            "GalleryAssetIDsJSON": gallery_asset_ids,
+        }
+        if final_media_type == "video":
+            ownership_fields["PrimaryVideoAssetID"] = str(existing_asset.get("asset_id") or "").strip()
+        else:
+            ownership_fields["PrimaryImageAssetID"] = str(existing_asset.get("asset_id") or "").strip()
+
+        sheets.update_ownership_fields(row_id, ownership_fields)
+
+        return jsonify({
+            "status": "ok",
+            "row_id": row_id,
+            "product_code": product_code,
+            "asset_id": str(existing_asset.get("asset_id") or "").strip(),
+            "kind": final_media_type,
+            "drive_url": str(existing_asset.get("drive_url") or "").strip(),
+            "preview_url": str(existing_asset.get("preview_url") or "").strip(),
+            "commit_status": "already_committed",
+        })
+
+    admin_record = _find_admin_record(row_id)
+    workspace_asset = _find_workspace_asset_by_url(admin_record or {}, final_media_url)
+    source_family = str((workspace_asset or {}).get("source_family") or "").strip()
+    source_name = str((workspace_asset or {}).get("source_name") or "").strip()
+    source_tag = str((workspace_asset or {}).get("source_tag") or "").strip()
+
+    try:
+        commit_result = _get_drive_asset_service().commit_primary_asset(
+            row_id=row_id,
+            product_code=product_code,
+            media_url=final_media_url,
+            media_type=final_media_type,
+            source_family=source_family,
+            source_name=source_name,
+            source_tag=source_tag,
+        )
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 409
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+    updated_owned_assets = _deactivate_owned_assets_by_role(owned_assets, role)
+    updated_owned_assets.append(commit_result["owned_asset_entry"])
+
+    ownership_fields = {
+        "ProductCode": product_code,
+        "OwnedAssetsJSON": updated_owned_assets,
+        "GalleryAssetIDsJSON": gallery_asset_ids,
+    }
+
+    if final_media_type == "video":
+        ownership_fields["PrimaryVideoAssetID"] = commit_result["asset_id"]
+    else:
+        ownership_fields["PrimaryImageAssetID"] = commit_result["asset_id"]
+
+    sheets.update_ownership_fields(row_id, ownership_fields)
+
+    return jsonify({
+        "status": "ok",
+        "row_id": row_id,
+        "product_code": product_code,
+        "asset_id": commit_result["asset_id"],
+        "kind": final_media_type,
+        "drive_url": commit_result["drive_url"],
+        "preview_url": commit_result["preview_url"],
+        "commit_status": "committed",
+    })
 
 
 @app.route("/admin/generate_content", methods=["POST"])
@@ -1996,8 +2196,16 @@ def admin_ui():
             );
           }
 
+          function getStablePreviewImageUrl(record) {
+            return normalizeImageUrl(
+              record.stable_preview_image_url ||
+              record.StablePreviewImageURL ||
+              ""
+            );
+          }
+
           function getImageUrl(record) {
-            return getFinalPrimaryMediaUrl(record) || normalizeImageUrl(
+            return getStablePreviewImageUrl(record) || getFinalPrimaryMediaUrl(record) || normalizeImageUrl(
               record.final_image_url ||
               record.source_image_url ||
               record.image_url ||
@@ -2054,6 +2262,30 @@ def admin_ui():
 
           function getRowId(record) {
             return record.row_id || "—";
+          }
+
+          function getProductCode(record) {
+            return record.product_code || record.ProductCode || "—";
+          }
+
+          function getOwnershipStatus(record) {
+            return record.ownership_status || "not_owned";
+          }
+
+          function hasOwnedPrimaryImage(record) {
+            return Boolean(record.has_owned_primary_image);
+          }
+
+          function hasOwnedPrimaryVideo(record) {
+            return Boolean(record.has_owned_primary_video);
+          }
+
+          function getOwnedGalleryCount(record) {
+            return String(record.owned_gallery_count ?? 0);
+          }
+
+          function canCommitOwnedAsset(record) {
+            return Boolean(getRowId(record) && getFinalPrimaryMediaUrl(record));
           }
 
           function getLastUpdated(record) {
@@ -2515,6 +2747,12 @@ def admin_ui():
             const processingStatus = getProcessingStatus(record);
             const price = getPrice(record);
             const rowId = getRowId(record);
+            const productCode = getProductCode(record);
+            const ownershipStatus = getOwnershipStatus(record);
+            const ownedPrimaryImage = hasOwnedPrimaryImage(record) ? "Yes" : "No";
+            const ownedPrimaryVideo = hasOwnedPrimaryVideo(record) ? "Yes" : "No";
+            const ownedGalleryCount = getOwnedGalleryCount(record);
+            const canCommitAsset = canCommitOwnedAsset(record);
             const lastUpdated = getLastUpdated(record);
             const jsonUrl = "/admin/product?row_id=" + encodeURIComponent(rowId);
             const matchedStatus = getMatchedMediaStatus(record);
@@ -2566,6 +2804,21 @@ def admin_ui():
 
                 <div class="detail-label">Row ID</div>
                 <div class="detail-value">${escapeHtml(rowId)}</div>
+
+                <div class="detail-label">Product Code</div>
+                <div class="detail-value">${escapeHtml(productCode)}</div>
+
+                <div class="detail-label">Ownership Status</div>
+                <div class="detail-value">${escapeHtml(ownershipStatus)}</div>
+
+                <div class="detail-label">Owned Primary Image</div>
+                <div class="detail-value">${escapeHtml(ownedPrimaryImage)}</div>
+
+                <div class="detail-label">Owned Primary Video</div>
+                <div class="detail-value">${escapeHtml(ownedPrimaryVideo)}</div>
+
+                <div class="detail-label">Owned Gallery Count</div>
+                <div class="detail-value">${escapeHtml(ownedGalleryCount)}</div>
 
                 <div class="detail-label">Last Updated</div>
                 <div class="detail-value">${escapeHtml(lastUpdated)}</div>
@@ -2622,6 +2875,7 @@ def admin_ui():
               <div class="detail-actions">
                 <button type="button" class="action-secondary" onclick="matchMediaAction('${escapeHtml(String(rowId))}', this)">Match Media</button>
                 <button type="button" onclick="retryRowAction('${escapeHtml(String(rowId))}', this)">Retry</button>
+                ${canCommitAsset ? `<button type="button" class="action-primary" onclick="commitOwnedAssetAction('${escapeHtml(String(rowId))}', this)">Commit Final Asset</button>` : ``}
                 ${showGenerateContent ? `<button type="button" class="action-primary" onclick="generateContentAction('${escapeHtml(String(rowId))}', this)">Generate Content</button>` : ``}
                 ${showResetToPending ? `<button type="button" onclick="resolveStuckAction('${escapeHtml(String(rowId))}', 'reset_to_pending', this)">Reset to Pending</button>` : ``}
                 ${showReleaseToFailed ? `<button type="button" class="action-danger" onclick="resolveStuckAction('${escapeHtml(String(rowId))}', 'release_to_failed', this)">Release to Failed</button>` : ``}
@@ -3145,6 +3399,34 @@ def admin_ui():
             }
           }
 
+          async function commitOwnedAssetAction(rowId, buttonEl) {
+            if (!rowId || rowId === "—") return;
+
+            clearError();
+            const buttonState = setButtonBusy(buttonEl, "Committing...");
+            setStatus("Committing owned asset for row " + rowId + "...");
+
+            try {
+              const result = await fetchJson("/admin/commit_final_asset?id=" + encodeURIComponent(rowId), {
+                method: "POST"
+              });
+
+              selectedRowId = rowId;
+              await loadRegistry({
+                keepSelection: true,
+                preferredRowId: rowId
+              });
+
+              showFlash("Owned asset committed for row " + rowId);
+              setStatus("Owned asset committed");
+            } catch (error) {
+              showError(error.message || "Unknown error");
+              setStatus("Owned asset commit failed");
+            } finally {
+              restoreButton(buttonEl, buttonState);
+            }
+          }
+
           async function generateContentAction(rowId, buttonEl) {
             if (!rowId || rowId === "—") return;
 
@@ -3243,6 +3525,7 @@ def admin_ui():
           window.deleteRowAction = deleteRowAction;
           window.matchMediaAction = matchMediaAction;
           window.selectFinalMediaAction = selectFinalMediaAction;
+          window.commitOwnedAssetAction = commitOwnedAssetAction;
           window.generateContentAction = generateContentAction;
 
           loadRegistry();
