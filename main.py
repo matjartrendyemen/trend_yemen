@@ -1310,6 +1310,13 @@ def admin_ui():
             word-break: break-word;
           }
 
+          .workspace-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+
           .badge-source-original {
             background: #eef2ff;
             border-color: #c7d2fe;
@@ -1545,7 +1552,7 @@ def admin_ui():
             `;
           }
 
-          function renderWorkspaceAssetCard(asset) {
+          function renderWorkspaceAssetCard(asset, record) {
             const sourceFamily = escapeHtml(asset?.source_family || "unknown");
             const sourceName = escapeHtml(asset?.source_name || "unknown");
             const sourceTag = escapeHtml(asset?.source_tag || "unknown_source");
@@ -1555,6 +1562,8 @@ def admin_ui():
             const rank = escapeHtml(asset?.rank ?? "");
             const url = escapeHtml(asset?.url || "");
             const label = escapeHtml(asset?.label || "Workspace Asset");
+            const rowId = escapeHtml(getRowId(record));
+            const mediaType = escapeHtml(asset?.type || "image");
             const isFinal = Boolean(asset?.is_final);
             const sourceBadgeClass = getWorkspaceSourceBadgeClass(asset);
             const typeBadgeClass = type.toLowerCase() === "video" ? "badge-type-video" : "";
@@ -1578,6 +1587,12 @@ def admin_ui():
                     <div style="margin-top:6px;">
                       <a class="workspace-link" href="${url}" target="_blank" rel="noreferrer">Open asset</a>
                     </div>
+                  </div>
+
+                  <div class="workspace-actions">
+                    ${isFinal
+                      ? `<button type="button" class="action-selected" disabled>Selected</button>`
+                      : `<button type="button" class="action-secondary" onclick="selectFinalMediaAction('${rowId}', '${url}', '${mediaType}', this)">Select</button>`}
                   </div>
                 </div>
               </div>
@@ -1610,7 +1625,7 @@ def admin_ui():
                 <div style="margin-top:12px;">
                   <div style="font-size:13px;color:#6b7280;margin-bottom:8px;">${title}</div>
                   <div class="workspace-grid">
-                    ${items.map(renderWorkspaceAssetCard).join("")}
+                    ${items.map((asset) => renderWorkspaceAssetCard(asset, record)).join("")}
                   </div>
                 </div>
               `;
