@@ -44,9 +44,22 @@ class SheetsStore:
         "ContentErrorMessage",
     ]
 
+    OWNERSHIP_COLUMNS = [
+        "ProductCode",
+        "OwnedAssetsJSON",
+        "PrimaryImageAssetID",
+        "PrimaryVideoAssetID",
+        "GalleryAssetIDsJSON",
+    ]
+
     MEDIA_JSON_COLUMNS = {
         "MatchedMediaJSON",
         "FinalGalleryMediaJSON",
+    }
+
+    OWNERSHIP_JSON_COLUMNS = {
+        "OwnedAssetsJSON",
+        "GalleryAssetIDsJSON",
     }
 
     REGISTRATION_REQUIRED_COLUMNS = [
@@ -92,6 +105,7 @@ class SheetsStore:
             self.REQUIRED_RESULT_COLUMNS
             + self.MEDIA_COLUMNS
             + self.CONTENT_COLUMNS
+            + self.OWNERSHIP_COLUMNS
             + self.REGISTRATION_REQUIRED_COLUMNS
         )
         missing_columns = [
@@ -148,6 +162,15 @@ class SheetsStore:
 
     def _normalize_media_field_value(self, key, value):
         if key in self.MEDIA_JSON_COLUMNS and isinstance(value, (list, dict)):
+            return json.dumps(value, ensure_ascii=False)
+
+        if value is None:
+            return ""
+
+        return str(value)
+
+    def _normalize_ownership_field_value(self, key, value):
+        if key in self.OWNERSHIP_JSON_COLUMNS and isinstance(value, (list, dict)):
             return json.dumps(value, ensure_ascii=False)
 
         if value is None:
@@ -234,6 +257,15 @@ class SheetsStore:
         row_values[self.col_map["ImageURL"] - 1] = image_url_value
         row_values[self.col_map["Price"] - 1] = price_value
         row_values[self.col_map["ProcessingStatus"] - 1] = "Pending"
+
+        if "ProductCode" in self.col_map:
+            row_values[self.col_map["ProductCode"] - 1] = row_id
+
+        if "OwnedAssetsJSON" in self.col_map:
+            row_values[self.col_map["OwnedAssetsJSON"] - 1] = "[]"
+
+        if "GalleryAssetIDsJSON" in self.col_map:
+            row_values[self.col_map["GalleryAssetIDsJSON"] - 1] = "[]"
 
         if "SeedMediaType" in self.col_map:
             row_values[self.col_map["SeedMediaType"] - 1] = "image"
@@ -329,4 +361,29 @@ class SheetsStore:
                 row_index,
                 col,
                 "" if value is None else str(value)
+            )
+
+    def update_ownership_fields(self, row_id, ownership_fields: Any):
+        if not isinstance(ownership_fields, dict):
+            raise ValueError("update_ownership_fields expects a dict")
+
+        self._refresh_headers()
+        self._ensure_required_columns()
+        self._refresh_headers()
+
+        row_index = self._get_row_index_by_id(row_id)
+        if not row_index:
+            raise ValueError(f"RowID not found: {row_id}")
+
+        for key, value in ownership_fields.items():
+            col = self.col_map.get(key)
+            if not col or key not in self.OWNERSHIP_COLUMNS:
+                continue
+
+            normalized_value = self._normalize_ownership_field_value(key, value)
+
+            self.sheet.update_cell(
+                row_index,
+                col,
+                normalized_value
             )
