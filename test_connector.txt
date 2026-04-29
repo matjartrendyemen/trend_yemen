@@ -1,3 +1,0 @@
-GitHub connector permission test.
-created_at=2026-04-29
-edited_at=2026-04-29
