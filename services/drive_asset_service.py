@@ -18,6 +18,7 @@ class DriveAssetService:
     SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
     SUPPORTED_VIDEO_EXTENSIONS = {".mp4"}
     DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+    PRODUCT_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 
     def __init__(self, seed_base_dir: str | Path):
         self.seed_base_dir = Path(seed_base_dir)
@@ -59,7 +60,12 @@ class DriveAssetService:
             raise ValueError("Unsupported video asset for commit")
 
         drive = self._build_drive_client()
-        folder_id = self._resolve_drive_folder_id()
+        root_folder_id = self._resolve_drive_folder_id()
+        product_folder_id = self._ensure_product_folder(
+            drive=drive,
+            root_folder_id=root_folder_id,
+            product_code=normalized_product_code,
+        )
         committed_filename = self._build_committed_filename(
             product_code=normalized_product_code,
             media_type=normalized_media_type,
@@ -70,12 +76,17 @@ class DriveAssetService:
             filename=committed_filename,
             mime_type=mime_type,
             content=source_bytes,
-            parent_folder_id=folder_id,
+            parent_folder_id=product_folder_id,
         )
 
         drive_file_id = str(committed_file.get("id") or "").strip()
         if not drive_file_id:
             raise RuntimeError("Drive upload did not return file id")
+
+        uploaded_file_parent_id = ""
+        parents = committed_file.get("parents")
+        if isinstance(parents, list) and parents:
+            uploaded_file_parent_id = str(parents[0] or "").strip()
 
         try:
             drive.permissions().create(
@@ -119,6 +130,9 @@ class DriveAssetService:
             "kind": normalized_media_type,
             "role": role,
             "filename": committed_filename,
+            "root_folder_id": root_folder_id,
+            "product_folder_id": product_folder_id,
+            "uploaded_file_parent_id": uploaded_file_parent_id,
         }
 
     def _read_source_bytes(self, *, media_url: str, media_type: str) -> tuple[bytes, str, str]:
@@ -235,13 +249,70 @@ class DriveAssetService:
             raise ValueError("DRIVE_FOLDER_ID is missing")
         return value
 
-    def _build_committed_filename(self, *, product_code: str, media_type: str, extension: str) -> str:
+    def _ensure_product_folder(self, *, drive, root_folder_id: str, product_code: str) -> str:
+        safe_product_code = self._sanitize_product_code(product_code)
+        escaped_name = safe_product_code.replace("'", "\\'")
+        query = (
+            f"name = '{escaped_name}' and "
+            f"mimeType = '{self.PRODUCT_FOLDER_MIME_TYPE}' and "
+            f"'{root_folder_id}' in parents and trashed = false"
+        )
+
+        try:
+            response = drive.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id,name,parents)",
+                pageSize=1,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            ).execute()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Drive product folder lookup failed inside DRIVE_FOLDER_ID={root_folder_id}: {exc}"
+            ) from exc
+
+        files = response.get("files") or []
+        if files:
+            folder_id = str(files[0].get("id") or "").strip()
+            if folder_id:
+                return folder_id
+
+        metadata = {
+            "name": safe_product_code,
+            "mimeType": self.PRODUCT_FOLDER_MIME_TYPE,
+            "parents": [root_folder_id],
+        }
+
+        try:
+            created = drive.files().create(
+                body=metadata,
+                fields="id,name,parents",
+                supportsAllDrives=True,
+            ).execute()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Drive product folder creation failed under DRIVE_FOLDER_ID={root_folder_id} for product_code={safe_product_code}: {exc}"
+            ) from exc
+
+        folder_id = str(created.get("id") or "").strip()
+        if not folder_id:
+            raise RuntimeError(
+                f"Drive product folder creation did not return folder id for product_code={safe_product_code}"
+            )
+        return folder_id
+
+    def _sanitize_product_code(self, product_code: str) -> str:
         safe_product_code = "".join(
             ch if ch.isalnum() or ch in {"-", "_"} else "_"
             for ch in str(product_code or "").strip()
-        ).strip("_") or "product"
-        prefix = "primary-video" if media_type == "video" else "primary-image"
-        return f"{safe_product_code}__{prefix}{extension}"
+        ).strip("_")
+        return safe_product_code or "product"
+
+    def _build_committed_filename(self, *, product_code: str, media_type: str, extension: str) -> str:
+        safe_product_code = self._sanitize_product_code(product_code)
+        prefix = "primary_video" if media_type == "video" else "primary_image"
+        return f"{safe_product_code}__{prefix}__001{extension}"
 
     def _upload_bytes_to_drive(
         self,
