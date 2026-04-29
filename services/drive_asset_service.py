@@ -1,5 +1,4 @@
 import io
-import json
 import mimetypes
 import os
 import urllib.parse
@@ -9,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-from google.oauth2.service_account import Credentials
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -17,6 +17,7 @@ from googleapiclient.http import MediaIoBaseUpload
 class DriveAssetService:
     SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
     SUPPORTED_VIDEO_EXTENSIONS = {".mp4"}
+    DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 
     def __init__(self, seed_base_dir: str | Path):
         self.seed_base_dir = Path(seed_base_dir)
@@ -81,10 +82,9 @@ class DriveAssetService:
                 fileId=drive_file_id,
                 body={"type": "anyone", "role": "reader"},
                 fields="id",
+                supportsAllDrives=True,
             ).execute()
         except Exception:
-            # Permission failures should not corrupt ownership writes.
-            # Preview/open may still work if the Drive defaults are already permissive.
             pass
 
         role = "primary_video" if normalized_media_type == "video" else "primary_image"
@@ -187,27 +187,53 @@ class DriveAssetService:
         return f"asset{extension}"
 
     def _build_drive_client(self):
-        creds_raw = os.getenv("GOOGLE_CREDENTIALS")
-        if not creds_raw:
-            raise ValueError("GOOGLE_CREDENTIALS is missing")
+        token_file = self._resolve_oauth_token_file()
+        if not token_file.exists() or not token_file.is_file():
+            raise ValueError(
+                "Drive OAuth token is missing. Run local OAuth bootstrap first. "
+                f"Expected token file: {token_file}"
+            )
 
-        credentials_info = json.loads(creds_raw)
-        credentials = Credentials.from_service_account_info(
-            credentials_info,
-            scopes=["https://www.googleapis.com/auth/drive"],
-        )
+        try:
+            credentials = Credentials.from_authorized_user_file(
+                str(token_file),
+                scopes=self.DRIVE_SCOPES,
+            )
+        except Exception as exc:
+            raise ValueError(
+                "Drive OAuth token is invalid. Re-run local OAuth bootstrap. "
+                f"Token file: {token_file}. Details: {exc}"
+            ) from exc
+
+        if not credentials or not credentials.valid:
+            if credentials and credentials.expired and credentials.refresh_token:
+                try:
+                    credentials.refresh(Request())
+                    token_file.write_text(credentials.to_json(), encoding="utf-8")
+                except Exception as exc:
+                    raise ValueError(
+                        "Drive OAuth token refresh failed. Re-run local OAuth bootstrap. "
+                        f"Token file: {token_file}. Details: {exc}"
+                    ) from exc
+            else:
+                raise ValueError(
+                    "Drive OAuth token is missing or invalid. Run local OAuth bootstrap first. "
+                    f"Expected token file: {token_file}"
+                )
+
         return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
+    def _resolve_oauth_token_file(self) -> Path:
+        raw_path = str(os.getenv("GOOGLE_DRIVE_OAUTH_TOKEN_FILE", "") or "").strip()
+        if raw_path:
+            return Path(raw_path)
+        return Path("token.drive.oauth.json")
+
     def _resolve_drive_folder_id(self) -> str:
-        for env_name in (
-            "OWNED_ASSETS_DRIVE_FOLDER_ID",
-            "GOOGLE_DRIVE_FOLDER_ID",
-            "DRIVE_FOLDER_ID",
-        ):
-            value = str(os.getenv(env_name, "") or "").strip()
-            if value:
-                return value
-        return ""
+        value = str(os.getenv("DRIVE_FOLDER_ID", "") or "").strip()
+        if not value:
+            raise ValueError("DRIVE_FOLDER_ID is missing")
+        return value
 
     def _build_committed_filename(self, *, product_code: str, media_type: str, extension: str) -> str:
         safe_product_code = "".join(
@@ -236,12 +262,17 @@ class DriveAssetService:
             resumable=False,
         )
 
-        return drive.files().create(
-            body=metadata,
-            media_body=media,
-            fields="id,name,mimeType",
-            supportsAllDrives=True,
-        ).execute()
+        try:
+            return drive.files().create(
+                body=metadata,
+                media_body=media,
+                fields="id,name,mimeType,parents",
+                supportsAllDrives=True,
+            ).execute()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Drive file upload failed for filename={filename} parent_folder_id={parent_folder_id or 'ROOT'}: {exc}"
+            ) from exc
 
     def _build_preview_url(self, drive_file_id: str) -> str:
         return f"https://drive.google.com/uc?export=view&id={drive_file_id}"
