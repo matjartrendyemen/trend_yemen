@@ -1,6 +1,6 @@
 # SYSTEM_CLEANUP_AUDIT
 
-هذا الملف هو **التقرير النهائي الحالي** لاتخاذ قرار تنظيف النظام بدون حذف فعلي بعد.
+هذا الملف هو **التقرير النهائي الحالي** لاتخاذ قرار تنظيف النظام بدون حذف فعلي إضافي بعد.
 
 الهدف من هذا التقرير:
 - تحديد ما يجب إبقاؤه
@@ -89,30 +89,13 @@
 
 ## B) Likely safe (95%)
 
-### `adapters/cj_adapter.py`
-- **classification:** likely safe
-- **confidence:** 95%
-- **why:**
-  - توجد الآن طبقة CJ أحدث وأكثر ثراءً في:
-    - `services/cj_supplier_service.py`
-  - media matching الحالية تعتمد على `CJSupplierService`
-  - `adapters/cj_adapter.py` تمثل طبقة CJ أقدم وأبسط
-  - لا يظهر لها دور واضح في execution path الحالية
-  - لا يوجد أي دليل فعلي داخل المراجعة الحالية أنها جزء من admin/media/content/ownership baseline
-- **where it used to belong:**
-  - طبقة CJ قديمة لجلب منتج واحد بطريقة مبسطة
-- **why it is no longer necessary:**
-  - تم استبدال مسؤوليتها عمليًا بطبقة أكثر اكتمالًا هي `services/cj_supplier_service.py`
-- **why not 100% safe yet:**
-  - لم يتم إثبات عدم وجود reference مخفية خارج نطاق المراجعة الحالية
-  - لذلك لا تزال تحتاج verification نهائية قبل الحذف الفعلي
+### Current decision
+**لا يوجد ملف في هذه الفئة حاليًا بعد حذف `adapters/cj_adapter.py`.**
 
-### Batch deletion recommendation for group B
+### Applied deletion
 - `adapters/cj_adapter.py`
-
-### risk level
-- **Low**
-- الخطر الأساسي فقط إذا كان هناك reference قديمة غير ظاهرة في ملفات خارج نطاق المراجعة الحالية
+- **status:** deleted on `foundation/system-cleanup`
+- **reason:** legacy CJ layer replaced عمليًا بـ `services/cj_supplier_service.py`
 
 ---
 
@@ -146,6 +129,14 @@
 - **why:**
   - يوجد overlap مرحلي مقصود
   - لا يجوز حذف أي field أو تبسيط contract الآن بدون pass منفصلة خاصة بالعقود
+
+### Current verification limit for Group C
+- لا يمكن حاليًا تحويل Group C كلها إلى A أو D بدقة 100% من خلال الموصل الحالي وحده
+- السبب:
+  - عدم توفر tree كاملة للريبو عبر الأداة الحالية
+  - وعدم توفر code search موثوقة كمسح شامل لكل الملفات
+- النتيجة:
+  - Group C تحتاج pass إضافية باستخدام وسيلة فحص أوسع (نسخة محلية كاملة أو tree كاملة)
 
 ### risk level
 - **Unknown / medium**
@@ -236,14 +227,14 @@
 # 4) Duplicate Responsibilities
 
 ## CJ overlap
-### files
+### previous files
 - `adapters/cj_adapter.py`
 - `services/cj_supplier_service.py`
 
 ### assessment
-- overlap واضح
+- overlap كان واضحًا
 - الطبقة المعتمدة حاليًا هي `services/cj_supplier_service.py`
-- `adapters/cj_adapter.py` legacy candidate
+- تم حذف `adapters/cj_adapter.py` على فرع cleanup
 
 ## Media identity overlap
 ### fields
@@ -310,7 +301,8 @@
 - **none currently**
 
 ## Group B — Likely safe (95%)
-- `adapters/cj_adapter.py`
+- **none currently**
+- السبب: الملف الوحيد في هذه المجموعة (`adapters/cj_adapter.py`) تم حذفه بالفعل على فرع cleanup
 
 ## Group C — Needs verification
 - أي ملف لم تتم مراجعته صراحة في هذا التقرير
@@ -342,9 +334,9 @@
 
 إذا كان الهدف هو **حذف دفعة واحدة بشكل آمن**، فالقرار الحالي الصحيح هو:
 
-1. **عدم حذف Group A** لأنه فارغ
-2. **اعتماد `adapters/cj_adapter.py` فقط كأول ملف حذف دفعي محتمل**
-3. عدم حذف أي شيء من Group C قبل verification إضافية
+1. لا يوجد Group A جاهزة للحذف الآن
+2. لا يوجد Group B متبقية بعد حذف `adapters/cj_adapter.py`
+3. عدم حذف أي شيء من Group C قبل وسيلة فحص أوسع
 4. حماية Group D بالكامل
 
 ---
@@ -352,13 +344,12 @@
 # 8) Final Risk Summary
 
 ## Very low risk
-- عدم حذف أي ملف الآن
-- أو حذف ملفات Group A فقط (حاليًا لا يوجد)
+- عدم حذف أي ملف إضافي الآن
 
 ## Low risk
-- حذف `adapters/cj_adapter.py` بعد موافقة صريحة
+- لا يوجد حذف إضافي مقترح حاليًا
 
 ## Medium to high risk
-- حذف أي ملف خارج هذا التقرير
-- أو حذف حقول/عقود ownership/final media الآن
-- أو cleanup مع refactor في نفس المرحلة
+- حذف أي ملف من Group C بدون pass تحقق أوسع
+- حذف حقول/عقود ownership/final media الآن
+- دمج cleanup مع refactor
