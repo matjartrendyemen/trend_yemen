@@ -10,7 +10,7 @@
 ---
 
 ## Current State
-الريبو الآن في حالة مستقرة نسبيًا وتشمل:
+الريبو الآن في حالة مستقرة وتشمل:
 - Admin Control Center
 - Product creation flow
 - Product Workspace
@@ -21,6 +21,7 @@
 - Commit Final Asset
 - content generation baseline
 - cleanup audit baseline
+- AI-ready documentation baseline
 
 ---
 
@@ -105,6 +106,14 @@
 
 ---
 
+## Future Activation Tracks
+سيتم فتح هذه المسارات فقط كـ phases مستقلة:
+- Frontend / Product Pages Phase
+- Commerce / Checkout Phase
+- Legacy Cleanup Phase
+
+---
+
 ## Explicitly Deferred Work
 - advanced gallery management
 - product pages
@@ -124,20 +133,24 @@
 - Sheets contract لا تبسّط أو تعاد تسميتها الآن
 - Drive OAuth path لا تعاد هندستها الآن
 - أي deletion pass تبدأ من audit مكتوبة ومعتمدة
+- أي frontend/checkout work لا تختلط مع backend phase الحالية
 
 ---
 
 ## Recommended Order
-1. merge documentation/cleanup clarity work
-2. decide legacy backend deletion pass
-3. decide frontend subtree status
-4. then only start next real implementation phase
+1. keep `main` as source of truth
+2. use `planning/next-phase-ready` as the clean implementation branch
+3. decide legacy backend deletion pass
+4. decide frontend subtree status
+5. then only start next real implementation phase
 
 ---
 
 ## Branch Recommendation
-بعد اعتماد التوثيق:
-- keep: `main`
-- keep temporarily: `foundation/system-cleanup`
-- create next phase branch from documented baseline:
-  - `planning/next-phase-ready`
+### Keep
+- `main`
+- `planning/next-phase-ready`
+
+### Current meaning
+- `main` = source of truth
+- `planning/next-phase-ready` = next implementation branch
