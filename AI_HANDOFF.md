@@ -227,6 +227,47 @@
 
 ---
 
+## AI Focus Filter
+
+### Level 1 — Hard Ignore
+لا تُلمس نهائيًا الآن:
+- `trend-yemen-store/`
+- payment / Pixpay / checkout
+
+### Level 2 — Soft Ignore
+تُراجع لاحقًا فقط:
+- legacy files المصنفة في `SYSTEM_CLEANUP_AUDIT.md`
+
+### Level 3 — Historical Context
+للقراءة فقط:
+- docs القديمة / summaries
+- `README_AUTONOMOUS.md`
+
+### Re-entry Rules
+إذا احتاج AI هذه المناطق:
+- لا يعدّل مباشرة
+- يفتح phase مستقلة
+- لا يدمجها مع backend الحالي
+
+### Why these areas are ignored
+- خارج execution path الحالي
+- لم تُختبر ضمن baseline
+- تخص مراحل مستقبلية
+
+### Critical warning
+أي تعديل هنا بدون phase مستقلة قد:
+- يكسر النظام
+- يسبب تضارب contracts
+- يخلط بين backend وfrontend
+
+### Future activation
+سيتم العمل عليها لاحقًا ضمن phases مستقلة مثل:
+- Frontend / Product Pages Phase
+- Commerce / Checkout Phase
+- Legacy Cleanup Phase
+
+---
+
 ## Legacy / unclear areas
 راجع دائمًا:
 - `SYSTEM_CLEANUP_AUDIT.md`
@@ -299,22 +340,13 @@
 
 ## Branch State (current snapshot)
 - `main`
-  - runtime stable branch
-- `foundation/system-cleanup`
-  - documentation and cleanup-analysis branch
-- `temp/repo-files-export`
-  - temporary audit helper branch
+  - source of truth
+- `planning/next-phase-ready`
+  - next implementation branch
 
 ### Keep
 - `main`
-- `foundation/system-cleanup` حتى يتم اعتماد ودمج التوثيق
-
-### Delete later
-- `temp/repo-files-export` بعد انتهاء الحاجة إليه
-
-### Recommended next clean branch
 - `planning/next-phase-ready`
-  - branch نظيف للمرحلة القادمة بعد تثبيت التوثيق
 
 ---
 
@@ -331,3 +363,4 @@
 - ثم `PROJECT_CONTEXT.md`
 - ثم `ENVIRONMENT_MAP.md`
 - ثم `SYSTEM_CLEANUP_AUDIT.md`
+- ثم `ROADMAP.md`
