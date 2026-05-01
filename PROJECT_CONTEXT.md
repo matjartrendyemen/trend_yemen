@@ -1,11 +1,13 @@
 # PROJECT_CONTEXT
 
-هذا الملف مرجع سياقي سريع للحالة الحالية المعتمدة للمشروع.
+هذا الملف هو مرجع سياقي سريع للحالة الحالية المعتمدة للمشروع.
 
 ## Source of Truth
 - الفرع العامل للتنظيف والتنظيم: `foundation/system-cleanup`
 - baseline المستقرة الحالية مبنية فوق `main`
-- لا يتم اعتماد أي فرضية قديمة تخالف ما هو موجود فعليًا في الكود
+- لا يتم اعتماد أي فرضية قديمة تخالف ما هو موجود فعليًا في الكود والتوثيق الحالية
+
+---
 
 ## Current Product Model
 النظام الحالي يدعم **Single Product Curated Workflow**:
@@ -18,19 +20,23 @@
 7. ownership commit إلى Google Drive
 8. publish-ready content generation
 
+---
+
 ## Current Stable Foundations
+
 ### Admin Control Center
 - overview / product detail / admin ui
 - retryable failure visibility
 - stuck processing handling
 - manual resolve actions
 
-### Media Layer
-- original seed image
+### Product Workspace
+- `product_workspace_assets`
+- original media
 - CJ supplier candidates
 - Pexels fallback
 - manual uploaded assets
-- workspace-based final selection
+- final selection from workspace
 
 ### Ownership Layer
 - `ProductCode`
@@ -38,13 +44,32 @@
 - `PrimaryImageAssetID`
 - `PrimaryVideoAssetID`
 - `GalleryAssetIDsJSON`
+- stable preview from owned assets
 
 ### Content Layer
 - `ContentOutputService`
 - `SEOService`
 - publish-ready commercial fields in Sheets
 
+---
+
+## What has already been completed
+- Admin Workspace
+- `product_workspace_assets`
+- Manual Asset Upload
+- Manual Asset Normalization
+- Select from Workspace
+- Product Ownership Foundation
+- Drive OAuth uploader
+- Commit Final Asset
+- Drive folder by ProductCode
+- cleanup audit baseline
+- deletion of `adapters/cj_adapter.py`
+
+---
+
 ## Current Execution Path
+
 ### Create + Process
 - `main.py`
 - `core/orchestrator.py`
@@ -66,16 +91,31 @@
 - `services/content_output_service.py`
 - `services/seo_service.py`
 
-## Separate frontend subtree
-الريبو تحتوي أيضًا على subproject منفصلة:
-- `trend-yemen-store/`
+---
 
-هذه تمثل storefront frontend مستقلة داخل نفس الريبو.
+## System Boundaries
 
-### current status
-- ليست جزءًا من Flask/Admin runtime الحالية
-- ليست ضمن current execution path أعلاه
-- لا تُعامل كجزء من backend baseline أثناء cleanup
+### Inside current backend system
+- Flask backend
+- Admin Control Center
+- Product Workspace
+- Google Sheets storage path
+- Drive owned asset commit path
+- content generation baseline
+
+### Outside current backend scope
+- `trend-yemen-store/` frontend subtree
+- full legacy deletion
+- advanced gallery management
+- product pages
+- publishing automation
+- supplier expansion beyond baseline
+- pricing sync
+- order sync
+- analytics
+- general refactor
+
+---
 
 ## Contracts that should stay stable
 - `SheetsStore` column contracts
@@ -85,11 +125,16 @@
 - Drive commit route behavior
 - manual asset intake contract
 
+---
+
 ## Important Constraints
 - لا refactor كبير
-- لا حذف ملفات بدون تحقق 100%
+- لا حذف ملفات بدون audit
 - لا تغيير architecture واسعة الآن
 - لا كسر أي flow تعمل فعليًا
+- `main.py` ملف حساس ويعدل فقط بـ patch صغيرة ومحسوبة
+
+---
 
 ## Current Cleanup Goal
 المرحلة الحالية ليست بناء features جديدة، بل:
@@ -97,4 +142,4 @@
 - توضيح execution path
 - تحديث docs
 - تصنيف الملفات غير الواضحة
-- التحضير لحذف آمن لاحقًا
+- التحضير لقرارات cleanup وphases القادمة بدون تشتت
