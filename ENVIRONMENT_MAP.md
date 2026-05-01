@@ -61,7 +61,14 @@
 - manual assets تحفظ محليًا أولًا
 - commit إلى Drive يحدث فقط بعد final selection
 
-## 8) Separation Rules
+## 8) Separate frontend subtree
+- `trend-yemen-store/` تمثل Astro frontend subproject منفصلة
+- لها package/config/runtime الخاصة بها
+- ليست جزءًا من Flask backend runtime الحالية
+- لا ينبغي تقييمها كأنها جزء من Google Sheets / Drive / Admin execution path
+
+## 9) Separation Rules
 - Sheets path منفصل عن Drive upload path
 - لا يتم استخدام نفس اعتماد الرفع لكلتا الطبقتين
-- هذه القاعدة جزء من baseline الحالية
+- subtree الواجهة منفصلة عن backend runtime
+- هذه القواعد جزء من baseline الحالية
