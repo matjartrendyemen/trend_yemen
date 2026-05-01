@@ -147,7 +147,18 @@
 - gallery متعددة
 - suppliers إضافيين
 
-## 7) ما هو stable فعليًا الآن
+## 7) Frontend subproject note
+الريبو تحتوي أيضًا على subtree منفصلة:
+- `trend-yemen-store/`
+
+هذه تمثل **Astro storefront subproject** مستقلة داخل نفس الريبو.
+
+### مهم
+- ليست جزءًا من Flask/Admin runtime الحالية
+- ليست جزءًا من ownership/media/content execution path الحالية
+- لا يجب خلطها مع backend baseline أثناء cleanup
+
+## 8) ما هو stable فعليًا الآن
 - Admin UI / Control Center
 - Product creation flow
 - retry guardrails
@@ -159,7 +170,7 @@
 - stable preview ownership read
 - content generation baseline
 
-## 8) ما الذي لا يجب كسره
+## 9) ما الذي لا يجب كسره
 - `main.py` routes الحالية
 - `storage/sheets_store.py` contracts الحالية
 - `services/admin_read_service.py` read model
@@ -168,7 +179,7 @@
 - media matching baseline
 - ownership write/read contracts
 
-## 9) ما الذي لا يزال مؤجلًا
+## 10) ما الذي لا يزال مؤجلًا
 - Product Pages الفعلية
 - publishing automation
 - bulk operations
@@ -176,7 +187,7 @@
 - supplier expansion beyond current baseline
 - refactor عام
 
-## 10) قاعدة العمل الحالية
+## 11) قاعدة العمل الحالية
 أي تطوير جديد يجب أن يلتزم بـ:
 - أقل blast radius ممكن
 - patches صغيرة ومحسوبة
