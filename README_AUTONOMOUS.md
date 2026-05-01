@@ -1,40 +1,36 @@
-# 📑 الدليل التشغيلي لنظام أتمتة متجر ترند اليمن (v1.6)
-**الحالة:** استقلال تام (Full Autonomy) | **المحرك:** Python 3.12.3 | **المنفذ:** 5000
+# README_AUTONOMOUS
 
-## 1. 🔐 خزنة المتغيرات المحمية (.env & Railway)
-يتم حقن البيانات التالية في الكلاسات عند كل دورة تشغيل [1]:
-- `GEMINI_API_KEY`: لتشغيل نموذج **Gemini 2.5 Flash**. [1]
-- `GOOGLE_CREDENTIALS`: نص JSON كامل لتفويض الوصول للشيت والدرايف. [1]
-- `SPREADSHEET_ID`: المعرف الفريد لجدول البيانات.
-- `DRIVE_FOLDER_ID`: معرف المجلد الرئيسي لوسائط المنتجات.
-- `CJ_API_KEY`, `CJ_EMAIL`, `CJ_PASSWORD`: للربط مع مورد CJ Dropshipping.
-- `PEXELS_API_KEY`: لإثراء محتوى السوشيال ميديا.
+> **Historical reference only**
+>
+> هذا الملف لم يعد source of truth الحالية للنظام.
+>
+> لفهم الريبو الآن استخدم بالترتيب:
+> 1. `README.md`
+> 2. `AI_HANDOFF.md`
+> 3. `PROJECT_CONTEXT.md`
+> 4. `ENVIRONMENT_MAP.md`
+> 5. `SYSTEM_CLEANUP_AUDIT.md`
+>
+> السبب:
+> - النظام تغيّر فعليًا
+> - Ownership layer أضيفت
+> - Drive OAuth uploader أضيفت
+> - Product Workspace وManual Assets أصبحت جزءًا من baseline
+> - بعض ما في هذا الملف يعكس مرحلة أقدم من المشروع
 
-## 2. 📁 هيكلية الكلاسات والمهام (Architecture)
+## Historical note
+احتفظنا بهذا الملف كمرجع تاريخي فقط حتى لا نفقد أثر القرارات القديمة.
 
-### 🧠 كلاس MasterOrchestrator (`core/orchestrator.py`)
-- **الدالة `run_forever()`**: تدير حلقة الفحص (كل 120 ثانية) ونظام التبريد (70 ثانية). [1]
-- **المهمة**: تنظيم التمرير بين AI، CJ، و Google Sheets.
+### Do not use this file as:
+- final architecture source of truth
+- final runtime map
+- final admin scope reference
+- final integration baseline
 
-### 👁️ كلاس SmartVisionAdapter (`adapters/vision_adapter.py`)
-- **الدالة `extract_keywords()`**: تحلل الصور عبر تقنية `inline_data` (بايتات) لتجاوز حماية روابط Drive. [1]
-
-### 📦 كلاس CJAdapter (`adapters/cj_adapter.py`)
-- **الدالة `fetch_product()`**: جلب السعر، SKU، ورابط الفيديو الرسمي.
-- **التوثيق**: يستخدم نظام `Token Caching` الصالح لـ 36000 ثانية لمنع الحظر. [1]
-
-### ✍️ كلاس SEOService (`services/seo_service.py`)
-- **الدالة `generate_yemeni_post()`**: تحويل العملة ($SAR \times 139.8$) وتوليد الوصف الجغرافي لليمن. [1]
-
-## 🗺️ خريطة بيانات الشيت (Products Tab)
-- **العمود B**: رابط الصورة (المصدر).
-- **العمود C**: حالة التنفيذ (Pending ➔ Completed). [1]
-- **العمود D**: مخرجات البصمة الرقمية (Keywords/SKU).
-
-## 🚀 بروتوكول الحماية من الحظر (Anti-Ban)
-1. **تأخير 120 ثانية**: بين عمليات المسح لحماية Quota جوجل.
-2. **تبريد تلقائي**: توقف 70 ثانية عند الخطأ 429.
-3. **التجاوز الآمن**: أي فشل في صف واحد لا يوقف السيرفر (Try-Except). [1]
-
----
-💡 **تنبيه للـ AI:** "اقرأ الكلاسات بدقة، وحافظ على بقاء السيرفر حياً عبر المنفذ 5000."
+### Use instead
+- `README.md` → current baseline
+- `AI_HANDOFF.md` → fastest engineering handoff
+- `PROJECT_CONTEXT.md` → current system context
+- `ENVIRONMENT_MAP.md` → current environment split
+- `ROADMAP.md` → next phases
+- `SYSTEM_CLEANUP_AUDIT.md` → cleanup and legacy classification
