@@ -66,6 +66,17 @@
 - `services/content_output_service.py`
 - `services/seo_service.py`
 
+## Separate frontend subtree
+الريبو تحتوي أيضًا على subproject منفصلة:
+- `trend-yemen-store/`
+
+هذه تمثل storefront frontend مستقلة داخل نفس الريبو.
+
+### current status
+- ليست جزءًا من Flask/Admin runtime الحالية
+- ليست ضمن current execution path أعلاه
+- لا تُعامل كجزء من backend baseline أثناء cleanup
+
 ## Contracts that should stay stable
 - `SheetsStore` column contracts
 - admin read model shape
