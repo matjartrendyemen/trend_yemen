@@ -40,6 +40,19 @@
 - stable preview from ownership layer
 - content generation baseline
 
+### Completed milestones already in repo
+- Admin Workspace
+- `product_workspace_assets`
+- Manual Asset Upload
+- Manual Asset Normalization
+- Select from Workspace
+- Ownership fields
+- Drive OAuth uploader
+- Commit Final Asset
+- Drive folder by `ProductCode`
+- cleanup audit baseline
+- deletion of `adapters/cj_adapter.py`
+
 ---
 
 ## How to Understand This Repo in 5 Minutes
@@ -48,7 +61,7 @@
 1. `README.md`
    - الصورة العامة
 2. `AI_HANDOFF.md`
-   - entry path + source of truth + safety rules
+   - entry path + source of truth + safety rules + ignore filter
 3. `main.py`
    - entrypoint الحقيقي وFlask routes الحية
 4. `services/admin_read_service.py`
@@ -182,6 +195,47 @@
 
 ---
 
+## AI Focus Filter
+
+### Level 1 — Hard Ignore
+لا تُلمس نهائيًا الآن:
+- `trend-yemen-store/`
+- payment / Pixpay / checkout
+
+### Level 2 — Soft Ignore
+تُراجع لاحقًا فقط:
+- legacy files المصنفة في `SYSTEM_CLEANUP_AUDIT.md`
+
+### Level 3 — Historical Context
+للقراءة فقط:
+- docs القديمة / summaries
+- `README_AUTONOMOUS.md`
+
+### Re-entry Rules
+إذا احتاج AI هذه المناطق:
+- لا يعدّل مباشرة
+- يفتح phase مستقلة
+- لا يدمجها مع backend الحالي
+
+### Why these areas are ignored
+- خارج execution path الحالي
+- لم تُختبر ضمن baseline
+- تخص مراحل مستقبلية
+
+### Critical warning
+أي تعديل هنا بدون phase مستقلة قد:
+- يكسر النظام
+- يسبب تضارب contracts
+- يخلط بين backend وfrontend
+
+### Future activation
+سيتم العمل عليها لاحقًا ضمن phases مستقلة مثل:
+- Frontend / Product Pages Phase
+- Commerce / Checkout Phase
+- Legacy Cleanup Phase
+
+---
+
 ## What is in scope now
 - Flask backend
 - Admin Control Center
@@ -204,18 +258,6 @@
 
 ---
 
-## Separate frontend subtree
-الريبو تحتوي أيضًا على subtree منفصلة:
-- `trend-yemen-store/`
-
-هذه تمثل storefront/frontend مستقلة داخل نفس الريبو.
-
-### Important
-- ليست جزءًا من Flask/Admin runtime الحالية
-- لا يجب خلطها مع backend cleanup أو backend execution path
-
----
-
 ## Safety Rules
 - لا تكسر flows الحية
 - لا refactor عام
@@ -235,7 +277,9 @@
 ---
 
 ## Branch guidance (current)
-- keep: `main`
-- keep until docs merge: `foundation/system-cleanup`
-- delete after audit consumption: `temp/repo-files-export`
-- next clean work branch should be created from the documented cleanup branch after review
+- `main` = source of truth
+- `planning/next-phase-ready` = next implementation branch
+
+### Branches to keep
+- `main`
+- `planning/next-phase-ready`
